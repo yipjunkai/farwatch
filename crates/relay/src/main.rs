@@ -14,7 +14,7 @@ use crate::relay::{RelayState, health_handler, ws_handler};
 
 #[derive(Debug, Parser)]
 #[command(name = "relay")]
-#[command(about = "Zero-knowledge relay server for terminal-relay")]
+#[command(about = "Zero-knowledge relay server for farwatch")]
 struct Args {
     #[arg(long, default_value = "0.0.0.0:8080")]
     bind: SocketAddr,
@@ -34,7 +34,7 @@ struct Args {
     /// Previous HMAC secret for key rotation. Optional.
     #[arg(long, default_value = "", env = "HMAC_SECRET_PREVIOUS")]
     hmac_secret_previous: String,
-    /// Control API base URL for revocation sync and session reporting (e.g. https://api.terminal-relay.dev).
+    /// Control API base URL for revocation sync and session reporting (e.g. https://api.farwatch.dev).
     #[arg(long, env = "CONTROL_API_URL")]
     control_api_url: Option<String>,
     /// Shared secret for authenticating with the control API internal endpoints.

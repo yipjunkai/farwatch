@@ -1,4 +1,4 @@
-use rand::{Rng, distributions::Alphanumeric, thread_rng};
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use url::Url;
 use uuid::Uuid;
 
@@ -35,7 +35,7 @@ pub fn new_pairing_code() -> String {
 }
 
 pub fn build_pairing_uri(pairing: &PairingUri) -> CoreResult<String> {
-    let mut url = Url::parse("termrelay://pair").map_err(|_| CoreError::InvalidPairingUri)?;
+    let mut url = Url::parse("farwatch://pair").map_err(|_| CoreError::InvalidPairingUri)?;
     url.query_pairs_mut()
         .append_pair("relay", &pairing.relay_url)
         .append_pair("session", &pairing.session_id)
@@ -55,7 +55,7 @@ pub fn build_pairing_uri(pairing: &PairingUri) -> CoreResult<String> {
 
 pub fn parse_pairing_uri(input: &str) -> CoreResult<PairingUri> {
     let url = Url::parse(input).map_err(|_| CoreError::InvalidPairingUri)?;
-    if url.scheme() != "termrelay" || url.host_str() != Some("pair") {
+    if url.scheme() != "farwatch" || url.host_str() != Some("pair") {
         return Err(CoreError::InvalidPairingUri);
     }
 
@@ -92,7 +92,7 @@ mod tests {
     #[test]
     fn pairing_uri_roundtrip_without_fingerprint() {
         let original = PairingUri {
-            relay_url: "wss://relay.terminal-relay.dev/ws".to_string(),
+            relay_url: "wss://relay.farwatch.dev/ws".to_string(),
             session_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
             pairing_code: "ABC123-DEF456-GHI789".to_string(),
             expected_fingerprint: None,
@@ -138,25 +138,25 @@ mod tests {
 
     #[test]
     fn parse_rejects_wrong_host() {
-        let err = parse_pairing_uri("termrelay://wrong?relay=x&session=y&code=z");
+        let err = parse_pairing_uri("farwatch://wrong?relay=x&session=y&code=z");
         assert!(err.is_err());
     }
 
     #[test]
     fn parse_rejects_missing_relay() {
-        let err = parse_pairing_uri("termrelay://pair?session=y&code=z");
+        let err = parse_pairing_uri("farwatch://pair?session=y&code=z");
         assert!(err.is_err());
     }
 
     #[test]
     fn parse_rejects_missing_session() {
-        let err = parse_pairing_uri("termrelay://pair?relay=x&code=z");
+        let err = parse_pairing_uri("farwatch://pair?relay=x&code=z");
         assert!(err.is_err());
     }
 
     #[test]
     fn parse_rejects_missing_code() {
-        let err = parse_pairing_uri("termrelay://pair?relay=x&session=y");
+        let err = parse_pairing_uri("farwatch://pair?relay=x&session=y");
         assert!(err.is_err());
     }
 
@@ -164,12 +164,12 @@ mod tests {
     fn parse_rejects_garbage() {
         assert!(parse_pairing_uri("").is_err());
         assert!(parse_pairing_uri("not a uri").is_err());
-        assert!(parse_pairing_uri("termrelay://").is_err());
+        assert!(parse_pairing_uri("farwatch://").is_err());
     }
 
     #[test]
     fn parse_ignores_unknown_params() {
-        let uri = "termrelay://pair?relay=ws://localhost&session=s1&code=c1&unknown=ignored";
+        let uri = "farwatch://pair?relay=ws://localhost&session=s1&code=c1&unknown=ignored";
         let parsed = parse_pairing_uri(uri).unwrap();
         assert_eq!(parsed.relay_url, "ws://localhost");
         assert_eq!(parsed.session_id, "s1");

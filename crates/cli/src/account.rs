@@ -81,7 +81,7 @@ pub async fn auth(
             let code = invite_code.ok_or_else(|| {
                 anyhow::anyhow!(
                     "An invite code is required for registration.\n\
-                     Usage: terminal-relay auth --email you@example.com --invite-code CODE"
+                     Usage: farwatch auth --email you@example.com --invite-code CODE"
                 )
             })?;
             register_with_email(email, code).await
@@ -151,7 +151,7 @@ async fn device_auth_flow() -> anyhow::Result<()> {
 
     loop {
         if tokio::time::Instant::now() >= deadline {
-            anyhow::bail!("device code expired — run `terminal-relay auth` to try again");
+            anyhow::bail!("device code expired — run `farwatch auth` to try again");
         }
 
         // Show spinner
@@ -184,7 +184,7 @@ async fn device_auth_flow() -> anyhow::Result<()> {
             if status.as_u16() == 400 {
                 print!("\r");
                 anyhow::bail!(
-                    "device code expired or not found — run `terminal-relay auth` to try again"
+                    "device code expired or not found — run `farwatch auth` to try again"
                 );
             }
             tracing::debug!("poll returned {status}");
@@ -213,13 +213,13 @@ async fn device_auth_flow() -> anyhow::Result<()> {
             config.save()?;
 
             println!("  Authenticated as {email}");
-            println!("  API key saved to ~/.terminal-relay/config.toml");
+            println!("  API key saved to ~/.farwatch/config.toml");
             println!();
             println!("  Your API key (save this — it won't be shown again):");
             println!("    {api_key}");
             println!();
             println!("  Get started:");
-            println!("    terminal-relay start");
+            println!("    farwatch start");
             return Ok(());
         }
 
@@ -256,7 +256,7 @@ async fn register_with_email(email: &str, invite_code: &str) -> anyhow::Result<(
     config.save()?;
 
     println!("Authenticated as {}", data.user.email);
-    println!("API key saved to ~/.terminal-relay/config.toml");
+    println!("API key saved to ~/.farwatch/config.toml");
     println!("\nYour API key (save this — it won't be shown again):");
     println!("  {}", data.api_key);
 
@@ -290,7 +290,7 @@ async fn login_with_key(api_key: &str) -> anyhow::Result<()> {
     config.save()?;
 
     println!("Authenticated as {}", data.user.email);
-    println!("API key saved to ~/.terminal-relay/config.toml");
+    println!("API key saved to ~/.farwatch/config.toml");
 
     Ok(())
 }

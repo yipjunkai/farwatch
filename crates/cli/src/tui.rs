@@ -231,7 +231,7 @@ fn render(frame: &mut Frame, state: &TuiState) {
     // Outer border.
     let outer = Block::default()
         .title(Line::from(vec![Span::styled(
-            " terminal-relay ",
+            " farwatch ",
             Style::default()
                 .fg(Color::White)
                 .add_modifier(Modifier::BOLD),
@@ -399,7 +399,7 @@ fn render_qr(frame: &mut Frame, area: Rect, state: &TuiState) {
         );
         lines.push(
             Line::from(Span::styled(
-                "`terminal-relay sessions`",
+                "`farwatch sessions`",
                 Style::default().fg(Color::Yellow),
             ))
             .alignment(Alignment::Center),

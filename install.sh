@@ -1,17 +1,17 @@
 #!/bin/sh
-# Install terminal-relay CLI (direct binary download)
+# Install farwatch CLI (direct binary download)
 #
-# Usage: curl -fsSL https://raw.githubusercontent.com/yipjunkai/terminal-relay/main/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/yipjunkai/farwatch/main/install.sh | sh
 #
 # Maintenance:
 # - Release URL pattern is derived from REPO and GitHub Releases — no changes
 #   needed unless the repository moves.
-# - The Homebrew formula (Formula/terminal-relay.rb) is the other install path
+# - The Homebrew formula (Formula/farwatch.rb) is the other install path
 #   and is auto-updated by CI (.github/workflows/release.yml).
 
 set -e
 
-REPO="yipjunkai/terminal-relay"
+REPO="yipjunkai/farwatch"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
 OS="$(uname -s)"
@@ -39,32 +39,32 @@ if [ -z "${TAG}" ]; then
   exit 1
 fi
 
-ARCHIVE="terminal-relay-${TAG}-${TARGET}.tar.gz"
+ARCHIVE="farwatch-${TAG}-${TARGET}.tar.gz"
 URL="https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}"
 
-echo "Downloading terminal-relay ${TAG} for ${TARGET}..."
+echo "Downloading farwatch ${TAG} for ${TARGET}..."
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "${TMPDIR}"' EXIT
 
 curl -fsSL "${URL}" -o "${TMPDIR}/${ARCHIVE}"
 tar xzf "${TMPDIR}/${ARCHIVE}" -C "${TMPDIR}"
 
-BINARY="${TMPDIR}/terminal-relay-${TAG}-${TARGET}/terminal-relay"
+BINARY="${TMPDIR}/farwatch-${TAG}-${TARGET}/farwatch"
 if [ ! -f "${BINARY}" ]; then
   echo "Error: binary not found in archive"
   exit 1
 fi
 
 if [ -w "${INSTALL_DIR}" ]; then
-  cp "${BINARY}" "${INSTALL_DIR}/terminal-relay"
+  cp "${BINARY}" "${INSTALL_DIR}/farwatch"
 else
   echo "Installing to ${INSTALL_DIR} (requires sudo)..."
-  sudo cp "${BINARY}" "${INSTALL_DIR}/terminal-relay"
+  sudo cp "${BINARY}" "${INSTALL_DIR}/farwatch"
 fi
 
-chmod +x "${INSTALL_DIR}/terminal-relay"
+chmod +x "${INSTALL_DIR}/farwatch"
 
-echo "terminal-relay ${TAG} installed to ${INSTALL_DIR}/terminal-relay"
+echo "farwatch ${TAG} installed to ${INSTALL_DIR}/farwatch"
 echo ""
 echo "Get started:"
-echo "  terminal-relay start"
+echo "  farwatch start"

@@ -42,7 +42,7 @@ enum Command {
     Start(HostArgs),
     /// Attach to a remote session as a client.
     Attach(AttachArgs),
-    /// Authenticate with the Terminal Relay hosted service.
+    /// Authenticate with the Farwatch hosted service.
     #[cfg(feature = "hosted")]
     Auth {
         /// Email address to register a new account.
@@ -149,7 +149,7 @@ async fn run_doctor() {
     crossterm::execute!(
         std::io::stdout(),
         SetAttribute(Attribute::Bold),
-        Print("  Terminal Relay Doctor\n"),
+        Print("  Farwatch Doctor\n"),
         SetAttribute(Attribute::Reset),
     )
     .ok();
@@ -184,7 +184,7 @@ async fn run_doctor() {
                 let prefix = if key.len() > 16 { &key[..16] } else { key };
                 ok(&format!("{prefix}..."));
             }
-            None => warn("not authenticated — run `terminal-relay auth`"),
+            None => warn("not authenticated — run `farwatch auth`"),
         }
     }
 
@@ -206,7 +206,7 @@ async fn run_doctor() {
     }
     #[cfg(not(feature = "hosted"))]
     {
-        ok("self-hosted (use TERMINAL_RELAY_URL to configure)");
+        ok("self-hosted (use FARWATCH_URL to configure)");
     }
 
     // Tools

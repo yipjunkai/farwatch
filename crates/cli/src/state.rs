@@ -34,7 +34,7 @@ pub struct SessionStore {
 }
 
 /// File header written before the ciphertext so we can detect encrypted vs legacy files.
-const ENCRYPTED_MAGIC: &[u8; 4] = b"TRSE"; // Terminal Relay Session Encrypted
+const ENCRYPTED_MAGIC: &[u8; 4] = b"FWSE"; // Farwatch Session Encrypted
 
 impl SessionStore {
     pub fn new(root: PathBuf) -> anyhow::Result<Self> {

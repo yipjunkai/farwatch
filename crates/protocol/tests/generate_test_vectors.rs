@@ -1,6 +1,6 @@
 use protocol::{
     crypto::{compute_handshake_mac, derive_session_keys, fingerprint, verify_handshake_mac},
-    pairing::{PairingUri, build_pairing_uri, parse_pairing_uri},
+    pairing::{build_pairing_uri, parse_pairing_uri, PairingUri},
     protocol::*,
 };
 /// Generates deterministic test vectors for cross-platform compatibility testing.
@@ -8,7 +8,7 @@ use protocol::{
 ///
 /// The output JSON can be saved and used by Dart, Swift, Kotlin tests to verify
 /// wire-compatible encoding/decoding and identical crypto outputs.
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use x25519_dalek::{PublicKey, StaticSecret};
 
 // ---------------------------------------------------------------------------
@@ -275,7 +275,7 @@ fn crypto_vectors() -> Value {
 
 fn pairing_vectors() -> Value {
     let pairing = PairingUri {
-        relay_url: "wss://relay.terminal-relay.dev/ws".to_string(),
+        relay_url: "wss://relay.farwatch.dev/ws".to_string(),
         session_id: SESSION_ID.to_string(),
         pairing_code: "ABCDEF-GHIJKL-MNOPQR".to_string(),
         expected_fingerprint: Some(fingerprint(&host_public())),

@@ -53,9 +53,9 @@ pub struct HostArgs {
     /// command on PATH. Extra arguments can follow the tool name.
     ///
     /// Examples:
-    ///   terminal-relay start claude
-    ///   terminal-relay start aider --model sonnet
-    ///   terminal-relay start my-custom-tool --flag
+    ///   farwatch start claude
+    ///   farwatch start aider --model sonnet
+    ///   farwatch start my-custom-tool --flag
     ///
     /// Auto-detects if not specified.
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -85,7 +85,7 @@ pub async fn run_host_sessions(args: HostArgs, store: SessionStore) -> anyhow::R
         // Warn if connecting to the production relay without an API key.
         if key.is_none() && args.relay_url == crate::constants::DEFAULT_RELAY_URL {
             eprintln!("Warning: No API key found. The hosted relay requires authentication.");
-            eprintln!("Run `terminal-relay auth` to authenticate.\n");
+            eprintln!("Run `farwatch auth` to authenticate.\n");
             return Err(anyhow::anyhow!("authentication required"));
         }
         key

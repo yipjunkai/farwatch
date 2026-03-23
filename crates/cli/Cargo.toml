@@ -11,14 +11,14 @@ homepage.workspace = true
 workspace = true
 
 [features]
-# The "hosted" feature enables Terminal Relay hosted service integration:
+# The "hosted" feature enables Farwatch hosted service integration:
 # authentication (device flow, email registration, API key login), account
 # management, and browser-based activation. Without this feature, the CLI
 # is a standalone relay + PTY tool suitable for self-hosting.
 hosted = ["dep:reqwest", "dep:open"]
 
 [[bin]]
-name = "terminal-relay"
+name = "farwatch"
 path = "src/main.rs"
 
 [dependencies]

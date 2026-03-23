@@ -1,11 +1,11 @@
 use std::{
     io::{Read, Write},
-    sync::{Arc, Mutex, mpsc},
+    sync::{mpsc, Arc, Mutex},
     thread,
 };
 
 use anyhow::Context;
-use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
+use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use tokio::sync::{mpsc as tokio_mpsc, oneshot};
 use tracing::warn;
 
@@ -41,7 +41,7 @@ impl PtySession {
             cmd.arg(arg);
         }
         // Inherit the current working directory so the spawned tool
-        // runs in the same directory the user started terminal-relay from.
+        // runs in the same directory the user started farwatch from.
         if let Ok(cwd) = std::env::current_dir() {
             cmd.cwd(cwd);
         }

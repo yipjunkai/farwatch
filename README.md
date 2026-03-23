@@ -1,10 +1,10 @@
-# terminal-relay
+# farwatch
 
 Access your AI coding assistants from any device. Secure, end-to-end encrypted terminal mirroring with structured agent events for Claude Code, Aider, GitHub Copilot, Gemini, and any terminal-based AI tool.
 
 ## How it works
 
-Run `terminal-relay start claude` on your dev machine. Claude Code launches in a PTY and you get a QR code. Scan it from your phone to get a live, encrypted session — both a terminal mirror and a structured view with native UI for tool calls, thinking indicators, and prompts.
+Run `farwatch start claude` on your dev machine. Claude Code launches in a PTY and you get a QR code. Scan it from your phone to get a live, encrypted session — both a terminal mirror and a structured view with native UI for tool calls, thinking indicators, and prompts.
 
 ```
 Your Machine                         Cloud                          Your Phone
@@ -23,24 +23,24 @@ Your Machine                         Cloud                          Your Phone
 
 ```bash
 # macOS / Linux (recommended)
-curl -fsSL https://raw.githubusercontent.com/yipjunkai/terminal-relay/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/yipjunkai/farwatch/main/install.sh | sh
 
 # From source
-cargo install --git https://github.com/yipjunkai/terminal-relay -p cli
+cargo install --git https://github.com/yipjunkai/farwatch -p cli
 
 # Docker (relay server only)
-docker pull ghcr.io/yipjunkai/terminal-relay:latest
+docker pull ghcr.io/yipjunkai/farwatch:latest
 ```
 
 ## Quick start
 
 ```bash
 # Start a session (auto-detects your AI tool)
-terminal-relay start
+farwatch start
 
 # Or specify a tool with extra args
-terminal-relay start claude
-terminal-relay start aider --model sonnet
+farwatch start claude
+farwatch start aider --model sonnet
 ```
 
 Scan the QR code from your phone to connect. On the host:
@@ -52,7 +52,7 @@ Scan the QR code from your phone to connect. On the host:
 ### Manual attach (from another terminal)
 
 ```bash
-terminal-relay attach --pairing-uri "termrelay://pair?..."
+farwatch attach --pairing-uri "farwatch://pair?..."
 ```
 
 ## What your phone sees
@@ -78,14 +78,14 @@ Both views update in real-time as Claude Code works. The structured events come 
 ## Commands
 
 ```bash
-terminal-relay start                  # Auto-detect and start AI tool
-terminal-relay start claude           # Start Claude Code
-terminal-relay start aider --model x  # Start with extra args
-terminal-relay attach --pairing-uri   # Attach from another terminal
-terminal-relay doctor                 # Diagnose environment
-terminal-relay auth                   # Authenticate (hosted relay)
-terminal-relay completions zsh        # Generate shell completions
-terminal-relay --version              # Show version
+farwatch start                  # Auto-detect and start AI tool
+farwatch start claude           # Start Claude Code
+farwatch start aider --model x  # Start with extra args
+farwatch attach --pairing-uri   # Attach from another terminal
+farwatch doctor                 # Diagnose environment
+farwatch auth                   # Authenticate (hosted relay)
+farwatch completions zsh        # Generate shell completions
+farwatch --version              # Show version
 ```
 
 ## Supported AI tools
@@ -99,7 +99,7 @@ Auto-detected in order of priority:
 | **GitHub Copilot CLI** (Microsoft) |     PTY only      |                                                |
 | **Gemini CLI** (Google)            |     PTY only      |                                                |
 | **Aider** (open source)            |     PTY only      |                                                |
-| Any command on PATH                |     PTY only      | `terminal-relay start my-tool`                 |
+| Any command on PATH                |     PTY only      | `farwatch start my-tool`                 |
 
 Tools without structured support work via PTY mirroring — the phone shows a terminal emulator.
 
@@ -153,7 +153,7 @@ All WebSocket messages are MessagePack-encoded across three layers:
 
 | Crate      | Description                                                                              |
 | ---------- | ---------------------------------------------------------------------------------------- |
-| `cli`      | User-facing binary (`terminal-relay`), PTY management, JSONL watcher, TUI, takeover mode |
+| `cli`      | User-facing binary (`farwatch`), PTY management, JSONL watcher, TUI, takeover mode |
 | `relay`    | Zero-knowledge relay server                                                              |
 | `protocol` | Shared protocol types, crypto (X25519 + AES-256-GCM), pairing primitives                 |
 
@@ -161,7 +161,7 @@ A Flutter mobile app (iOS + Android) is available separately as the primary mobi
 
 ## Security
 
-Terminal Relay is designed so that **no one except you and your connected device can read your terminal data** — not us, not the relay operator, not anyone on the network.
+Farwatch is designed so that **no one except you and your connected device can read your terminal data** — not us, not the relay operator, not anyone on the network.
 
 ### Threat model
 
@@ -172,7 +172,7 @@ The relay server is assumed to be **honest-but-curious**: it faithfully forwards
 Every session establishes a unique encrypted channel between the host (your dev machine) and the client (your phone/tablet/other terminal):
 
 1. **Key exchange**: Each side generates an ephemeral X25519 key pair. Public keys are exchanged via the relay inside `Handshake` messages.
-2. **Key derivation**: Both sides compute a shared secret via Diffie-Hellman, then derive two 256-bit symmetric keys (one per direction) using HKDF-SHA256 with the session ID as salt and `terminal-relay/v1/channel-keys` as the info string.
+2. **Key derivation**: Both sides compute a shared secret via Diffie-Hellman, then derive two 256-bit symmetric keys (one per direction) using HKDF-SHA256 with the session ID as salt and `farwatch/v1/channel-keys` as the info string.
 3. **Encryption**: All terminal I/O and agent events are sealed with AES-256-GCM before transmission. Each frame carries a monotonically increasing nonce.
 4. **Key confirmation**: After key derivation, both sides exchange an HMAC-SHA256 over the handshake transcript, proving each peer holds the private key corresponding to their advertised public key.
 
@@ -204,7 +204,7 @@ The new `AgentEvent` and `AgentCommand` message types go through the same `Secur
 | At-rest encryption   | AES-256-GCM                      | Random nonce per file, machine-local key         |
 | Nonce construction   | 4 zero bytes + 8-byte BE counter | 96-bit nonce from 64-bit counter                 |
 
-### What Terminal Relay does NOT protect against
+### What Farwatch does NOT protect against
 
 - **Compromised endpoints**: If your machine or phone is compromised, the attacker has access to the decrypted session.
 - **Traffic analysis**: The relay can see message timing and sizes, revealing activity patterns.
@@ -219,16 +219,16 @@ Run your own relay server — no account, API key, or control API needed:
 cargo run -p relay -- --bind 0.0.0.0:8080
 
 # With Docker
-docker run -p 8080:8080 ghcr.io/yipjunkai/terminal-relay:latest
+docker run -p 8080:8080 ghcr.io/yipjunkai/farwatch:latest
 ```
 
 Point the CLI at your relay:
 
 ```bash
-TERMINAL_RELAY_URL=ws://your-server:8080/ws terminal-relay start
+FARWATCH_URL=ws://your-server:8080/ws farwatch start
 ```
 
-> **Note:** `terminal-relay auth` is for the hosted service only. Self-hosted relays run unauthenticated by default.
+> **Note:** `farwatch auth` is for the hosted service only. Self-hosted relays run unauthenticated by default.
 
 ## Development
 
@@ -237,10 +237,10 @@ TERMINAL_RELAY_URL=ws://your-server:8080/ws terminal-relay start
 cargo run -p relay -- --bind 0.0.0.0:8080
 
 # Run the CLI against local relay
-TERMINAL_RELAY_URL=ws://127.0.0.1:8080/ws cargo run -p cli -- start
+FARWATCH_URL=ws://127.0.0.1:8080/ws cargo run -p cli -- start
 
 # Run with hosted service features (auth, device flow)
-TERMINAL_RELAY_URL=ws://127.0.0.1:8080/ws cargo run -p cli --features hosted -- start
+FARWATCH_URL=ws://127.0.0.1:8080/ws cargo run -p cli --features hosted -- start
 
 # Run tests
 cargo test
@@ -252,10 +252,10 @@ To use the development CLI from a different project directory:
 
 ```bash
 # Run against hosted relay from any directory
-cargo run --manifest-path ~/path/to/terminal-relay/Cargo.toml -p cli --features hosted -- start claude
+cargo run --manifest-path ~/path/to/farwatch/Cargo.toml -p cli --features hosted -- start claude
 
 # Run against local relay from any directory
-TERMINAL_RELAY_URL=ws://127.0.0.1:8080/ws cargo run --manifest-path ~/path/to/terminal-relay/Cargo.toml -p cli -- start
+FARWATCH_URL=ws://127.0.0.1:8080/ws cargo run --manifest-path ~/path/to/farwatch/Cargo.toml -p cli -- start
 ```
 
 The AI tool launches in your current working directory, not the relay repo directory.
@@ -269,7 +269,7 @@ The AI tool launches in your current working directory, not the relay repo direc
 
 ## License
 
-Terminal Relay is licensed under either of
+Farwatch is licensed under either of
 
 - [MIT License](LICENSE-MIT)
 - [Apache License 2.0](LICENSE-APACHE)

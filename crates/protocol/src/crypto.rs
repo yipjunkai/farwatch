@@ -98,7 +98,7 @@ pub fn derive_session_keys(
 
     let hk = Hkdf::<Sha256>::new(Some(session_id.as_bytes()), shared.as_bytes());
     let mut okm = [0_u8; 64];
-    hk.expand(b"terminal-relay/v1/channel-keys", &mut okm)
+    hk.expand(b"farwatch/v1/channel-keys", &mut okm)
         .map_err(|_| CoreError::CryptoFailure)?;
 
     let mut first = [0_u8; 32];

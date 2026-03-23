@@ -167,7 +167,7 @@ fn pick_and_save_default(tools: &[ToolCandidate]) -> anyhow::Result<ToolCommand>
             cursor::MoveTo(2, 1),
             SetForegroundColor(CtColor::White),
             SetAttribute(Attribute::Bold),
-            Print("Welcome to Terminal Relay"),
+            Print("Welcome to Farwatch"),
             SetAttribute(Attribute::Reset),
         )?;
 

@@ -8,7 +8,7 @@ use crate::constants::STATE_DIR_NAME;
 
 const CONFIG_FILE: &str = "config.toml";
 
-/// User configuration persisted in `~/.terminal-relay/config.toml`.
+/// User configuration persisted in `~/.farwatch/config.toml`.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Config {
     /// Default AI tool to use when `--tool` is not specified.
@@ -25,7 +25,7 @@ pub struct Config {
 }
 
 impl Config {
-    /// Load config from `~/.terminal-relay/config.toml`, or return defaults if missing.
+    /// Load config from `~/.farwatch/config.toml`, or return defaults if missing.
     pub fn load() -> anyhow::Result<Self> {
         let path = config_path()?;
         if !path.exists() {
@@ -38,7 +38,7 @@ impl Config {
         Ok(config)
     }
 
-    /// Save config to `~/.terminal-relay/config.toml`.
+    /// Save config to `~/.farwatch/config.toml`.
     pub fn save(&self) -> anyhow::Result<()> {
         let path = config_path()?;
         if let Some(parent) = path.parent() {

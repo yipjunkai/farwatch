@@ -48,9 +48,9 @@ impl RelayConnection {
         let (ws, _) = connect_async(&connect_url).await.map_err(|e| {
             let msg = e.to_string();
             if msg.contains("401") || msg.contains("403") {
-                anyhow::anyhow!(
+                    anyhow::anyhow!(
                     "relay rejected authentication ({}). Your API key may be invalid or revoked.\n\
-                     Run `terminal-relay auth` to re-authenticate.",
+                     Run `farwatch auth` to re-authenticate.",
                     msg
                 )
             } else {
