@@ -254,9 +254,8 @@ async fn run_single_host_session(params: HostSessionParams) -> anyhow::Result<()
     let mut heartbeat = tokio::time::interval(Duration::from_secs(crate::constants::HEARTBEAT_INTERVAL_SECS));
     let mut redraw = tokio::time::interval(Duration::from_millis(crate::constants::REDRAW_INTERVAL_MS));
 
-    let result: anyhow::Result<()> = async {
-        loop {
-            tokio::select! {
+    loop {
+        tokio::select! {
                 // ── PTY output ──
                 output = output_rx.recv() => {
                     let Some(bytes) = output else { continue; };
@@ -309,7 +308,6 @@ async fn run_single_host_session(params: HostSessionParams) -> anyhow::Result<()
                             if status.role == PeerRole::Client {
                                 peer_online = status.online;
                                 if peer_online {
-                                    ctx.tui_state.status = PeerStatus::PeerConnected;
                                     ctx.tui_state.push_log(LogLevel::Info, "Client connected");
                                     send_handshake(
                                         &ctx.identity.session_id,
@@ -320,7 +318,6 @@ async fn run_single_host_session(params: HostSessionParams) -> anyhow::Result<()
                                     )?;
                                     ctx.tui_state.status = PeerStatus::Handshaking;
                                 } else {
-                                    ctx.tui_state.status = PeerStatus::Disconnected;
                                     ctx.tui_state.push_log(LogLevel::Warning, "Client disconnected");
                                     info!(session_id = %ctx.identity.session_id, "client disconnected, awaiting reconnect");
                                     ctx.chan.reset();
@@ -405,14 +402,11 @@ async fn run_single_host_session(params: HostSessionParams) -> anyhow::Result<()
                 }
             }
         }
-        Ok(())
-    }
-    .await;
-
-    // Ensure terminal is restored even on error.
-    tui_handle.restore()?;
-    result
+    // Terminal restored automatically by Tui::Drop.
+    Ok(())
 }
+
+
 
 fn handle_route(
     route: RelayRoute,
@@ -838,8 +832,8 @@ fn initial_size() -> (u16, u16) {
 fn rfc3339_now() -> String {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or_default();
+        .expect("system clock is before Unix epoch")
+        .as_secs();
     unix_secs_to_rfc3339(secs)
 }
 

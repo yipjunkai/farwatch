@@ -43,8 +43,8 @@ impl ChannelState {
 pub fn now_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or_default()
+        .expect("system clock is before Unix epoch")
+        .as_millis() as u64
 }
 
 pub fn send_handshake(

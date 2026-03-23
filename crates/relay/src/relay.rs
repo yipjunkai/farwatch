@@ -787,7 +787,7 @@ async fn handle_socket(
         }
 
     let registered_message = RelayMessage::Registered(register_response.clone());
-    if send_wire(&mut sink, &registered_message).await.is_err() {
+    if send_wire(&mut sink, &registered_message).await.map(|_| ()).is_err() {
         return;
     }
 
@@ -863,11 +863,9 @@ async fn handle_socket(
                 let Some(message) = outbound else {
                     break;
                 };
-                if let Ok(encoded) = encode_relay(&message) {
-                    bytes_down += encoded.len() as u64;
-                }
-                if send_wire(&mut sink, &message).await.is_err() {
-                    break;
+                match send_wire(&mut sink, &message).await {
+                    Ok(len) => bytes_down += len as u64,
+                    Err(()) => break,
                 }
             }
         }
@@ -904,14 +902,17 @@ async fn handle_socket(
     }
 }
 
+/// Encode and send a relay message. Returns the number of bytes sent on success.
 async fn send_wire(
     sink: &mut futures_util::stream::SplitSink<axum::extract::ws::WebSocket, Message>,
     message: &RelayMessage,
-) -> Result<(), ()> {
+) -> Result<usize, ()> {
     let bytes = encode_relay(message).map_err(|_| ())?;
+    let len = bytes.len();
     sink.send(Message::Binary(bytes.into()))
         .await
-        .map_err(|_| ())
+        .map_err(|_| ())?;
+    Ok(len)
 }
 
 async fn send_error(
@@ -925,6 +926,7 @@ async fn send_error(
         }),
     )
     .await
+    .map(|_| ())
 }
 
 fn generate_resume_token() -> String {

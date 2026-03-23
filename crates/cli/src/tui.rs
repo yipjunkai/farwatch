@@ -27,7 +27,6 @@ use ratatui::{
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PeerStatus {
     WaitingForPeer,
-    PeerConnected,
     Handshaking,
     Secure,
     Disconnected,
@@ -37,7 +36,6 @@ impl PeerStatus {
     fn label(&self) -> &str {
         match self {
             Self::WaitingForPeer => "Waiting for peer",
-            Self::PeerConnected => "Peer connected",
             Self::Handshaking => "Handshaking...",
             Self::Secure => "Secure",
             Self::Disconnected => "Disconnected",
@@ -47,7 +45,6 @@ impl PeerStatus {
     fn color(&self) -> Color {
         match self {
             Self::WaitingForPeer => Color::Yellow,
-            Self::PeerConnected => Color::Cyan,
             Self::Handshaking => Color::Cyan,
             Self::Secure => Color::Green,
             Self::Disconnected => Color::Red,
