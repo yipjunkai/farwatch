@@ -23,7 +23,7 @@ impl PeerRole {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegisterRequest {
     pub protocol_version: u16,
     /// Minimum protocol version the client supports (for range negotiation).
@@ -36,7 +36,7 @@ pub struct RegisterRequest {
     pub resume_token: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegisterResponse {
     pub server_version: String,
     /// The protocol version selected by the server (highest mutually supported).
@@ -46,25 +46,25 @@ pub struct RegisterResponse {
     pub session_ttl_secs: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RelayRoute {
     pub session_id: String,
     pub payload: Vec<u8>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PeerStatus {
     pub session_id: String,
     pub role: PeerRole,
     pub online: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RelayError {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RelayMessage {
     Register(RegisterRequest),
     Registered(RegisterResponse),
@@ -75,7 +75,7 @@ pub enum RelayMessage {
     Error(RelayError),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Handshake {
     pub public_key: [u8; 32],
     pub fingerprint: String,
@@ -83,19 +83,19 @@ pub struct Handshake {
     pub timestamp_ms: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SealedFrame {
     pub nonce: u64,
     pub ciphertext: Vec<u8>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HandshakeConfirm {
     /// HMAC-SHA256 over the handshake transcript, proving the sender holds the DH private key.
     pub mac: [u8; 32],
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PeerFrame {
     Handshake(Handshake),
     HandshakeConfirm(HandshakeConfirm),
@@ -103,14 +103,14 @@ pub enum PeerFrame {
     KeepAlive,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PushNotification {
     pub title: String,
     pub body: String,
 }
 
 /// Action requested by a voice command from a mobile client.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VoiceAction {
     /// The raw transcribed text from speech recognition.
     pub transcript: String,
@@ -124,7 +124,7 @@ pub struct VoiceAction {
 
 /// Structured events emitted by an AI agent (e.g., Claude Code with `--output-format stream-json`).
 /// Rich clients render these as native UI; terminal clients can ignore them via `Unknown` fallback.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AgentEvent {
     /// Agent session initialized with model info and available tools.
     SessionInit {
@@ -174,7 +174,7 @@ pub enum AgentEvent {
 }
 
 /// Commands sent from a rich client to control the agent session.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AgentCommand {
     /// Send a text prompt to the agent.
     Prompt { text: String },
@@ -184,7 +184,7 @@ pub enum AgentCommand {
     DenyToolUse { id: String, reason: Option<String> },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SecureMessage {
     // ── Core variants ──
     PtyInput(Vec<u8>),
@@ -289,8 +289,7 @@ mod tests {
     fn relay_roundtrip(msg: &RelayMessage) {
         let bytes = encode_relay(msg).unwrap();
         let decoded = decode_relay(&bytes).unwrap();
-        // Compare debug representations as a simple equality check
-        assert_eq!(format!("{msg:?}"), format!("{decoded:?}"));
+        assert_eq!(*msg, decoded);
     }
 
     #[test]
@@ -365,7 +364,7 @@ mod tests {
     fn peer_frame_roundtrip(frame: &PeerFrame) {
         let bytes = encode_peer_frame(frame).unwrap();
         let decoded = decode_peer_frame(&bytes).unwrap();
-        assert_eq!(format!("{frame:?}"), format!("{decoded:?}"));
+        assert_eq!(*frame, decoded);
     }
 
     #[test]
@@ -413,7 +412,7 @@ mod tests {
     fn secure_msg_roundtrip(msg: &SecureMessage) {
         let bytes = encode_secure_message(msg).unwrap();
         let decoded = decode_secure_message(&bytes).unwrap();
-        assert_eq!(format!("{msg:?}"), format!("{decoded:?}"));
+        assert_eq!(*msg, decoded);
     }
 
     #[test]
