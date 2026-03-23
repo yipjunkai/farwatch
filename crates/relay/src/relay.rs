@@ -401,49 +401,19 @@ impl RelayState {
                     slot
                 });
 
-            // Track IP for new sessions.
             if is_new {
                 self.track_ip(ip);
             }
 
-            if session.failed_pairing_attempts >= MAX_PAIRING_FAILURES {
-                warn!(session_id = %request.session_id, "session locked out after too many failed pairing attempts");
-                return Err(SessionError::SessionLocked);
-            }
-
-            if session.pairing_code != request.pairing_code {
-                session.failed_pairing_attempts += 1;
-                warn!(
-                    session_id = %request.session_id,
-                    attempts = session.failed_pairing_attempts,
-                    "invalid pairing code"
-                );
-                return Err(SessionError::PairingMismatch);
-            }
-
-            let resume_token = {
-                let host = session.slot_mut(PeerRole::Host);
-                if host.connected {
-                    let can_resume = request.resume_token.as_ref() == Some(&host.resume_token);
-                    if !can_resume {
-                        return Err(SessionError::AlreadyConnected { role: PeerRole::Host });
-                    }
-                }
-
-                if let Some(token) = &request.resume_token
-                    && token != &host.resume_token
-                {
-                    return Err(SessionError::InvalidResumeToken { role: PeerRole::Host });
-                }
-
-                host.sender = Some(sender);
-                host.connected = true;
-                host.last_seen = Instant::now();
-                host.resume_token.clone()
-            };
-
+            let resume_token = Self::connect_peer_slot(
+                &mut session,
+                PeerRole::Host,
+                &request.session_id,
+                &request.pairing_code,
+                request.resume_token.as_ref(),
+                sender,
+            )?;
             let peer_online = session.client.connected;
-            session.last_activity = Instant::now();
 
             return Ok(RegisterResponse {
                 server_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -454,49 +424,21 @@ impl RelayState {
             });
         }
 
+        // Client registration — session must already exist.
         let mut session = self
             .sessions
             .get_mut(&request.session_id)
             .ok_or(SessionError::SessionNotFound)?;
 
-        if session.failed_pairing_attempts >= MAX_PAIRING_FAILURES {
-            warn!(session_id = %request.session_id, "session locked out after too many failed pairing attempts");
-            return Err(SessionError::SessionLocked);
-        }
-
-        if session.pairing_code != request.pairing_code {
-            session.failed_pairing_attempts += 1;
-            warn!(
-                session_id = %request.session_id,
-                attempts = session.failed_pairing_attempts,
-                "invalid pairing code"
-            );
-            return Err(SessionError::PairingMismatch);
-        }
-
-        let resume_token = {
-            let client = session.slot_mut(PeerRole::Client);
-            if client.connected {
-                let can_resume = request.resume_token.as_ref() == Some(&client.resume_token);
-                if !can_resume {
-                    return Err(SessionError::AlreadyConnected { role: PeerRole::Client });
-                }
-            }
-
-            if let Some(token) = &request.resume_token
-                && token != &client.resume_token
-            {
-                return Err(SessionError::InvalidResumeToken { role: PeerRole::Client });
-            }
-
-            client.sender = Some(sender);
-            client.connected = true;
-            client.last_seen = Instant::now();
-            client.resume_token.clone()
-        };
-
+        let resume_token = Self::connect_peer_slot(
+            &mut session,
+            PeerRole::Client,
+            &request.session_id,
+            &request.pairing_code,
+            request.resume_token.as_ref(),
+            sender,
+        )?;
         let peer_online = session.host.connected;
-        session.last_activity = Instant::now();
 
         Ok(RegisterResponse {
             server_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -505,6 +447,54 @@ impl RelayState {
             peer_online,
             session_ttl_secs: self.session_ttl.as_secs(),
         })
+    }
+
+    /// Validate pairing code and connect a peer slot. Shared by host and client registration.
+    /// Returns the resume token on success.
+    fn connect_peer_slot(
+        session: &mut SessionSlot,
+        role: PeerRole,
+        session_id: &str,
+        request_pairing_code: &str,
+        request_resume_token: Option<&String>,
+        sender: mpsc::Sender<RelayMessage>,
+    ) -> Result<String, SessionError> {
+        if session.failed_pairing_attempts >= MAX_PAIRING_FAILURES {
+            warn!(session_id = %session_id, "session locked out after too many failed pairing attempts");
+            return Err(SessionError::SessionLocked);
+        }
+
+        if session.pairing_code != request_pairing_code {
+            session.failed_pairing_attempts += 1;
+            warn!(
+                session_id = %session_id,
+                attempts = session.failed_pairing_attempts,
+                "invalid pairing code"
+            );
+            return Err(SessionError::PairingMismatch);
+        }
+
+        let slot = session.slot_mut(role);
+        if slot.connected {
+            let can_resume = request_resume_token == Some(&slot.resume_token);
+            if !can_resume {
+                return Err(SessionError::AlreadyConnected { role });
+            }
+        }
+
+        if let Some(token) = request_resume_token
+            && token != &slot.resume_token
+        {
+            return Err(SessionError::InvalidResumeToken { role });
+        }
+
+        slot.sender = Some(sender);
+        slot.connected = true;
+        slot.last_seen = Instant::now();
+        let resume_token = slot.resume_token.clone();
+
+        session.last_activity = Instant::now();
+        Ok(resume_token)
     }
 
     fn set_disconnected(&self, session_id: &str, role: PeerRole) -> Option<PeerRole> {

@@ -1,11 +1,11 @@
 use std::{
     io::{Read, Write},
-    sync::{mpsc, Arc, Mutex},
+    sync::mpsc,
     thread,
 };
 
 use anyhow::Context;
-use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use tokio::sync::{mpsc as tokio_mpsc, oneshot};
 use tracing::warn;
 
@@ -63,7 +63,7 @@ impl PtySession {
             .master
             .take_writer()
             .context("failed taking PTY writer")?;
-        let master: Arc<Mutex<Box<dyn MasterPty + Send>>> = Arc::new(Mutex::new(pair.master));
+        let master = pair.master;
 
         let (output_tx, output_rx) = tokio_mpsc::channel::<Vec<u8>>(PTY_OUTPUT_CHANNEL_CAPACITY);
         let (input_tx, input_rx) = mpsc::channel::<Vec<u8>>();
@@ -96,13 +96,11 @@ impl PtySession {
             }
         });
 
-        let resize_master = Arc::clone(&master);
+        // The master handle is only needed for resize — move it directly
+        // into the resize thread. No Arc/Mutex needed since no sharing occurs.
         thread::spawn(move || {
             while let Ok((rows, cols)) = resize_rx.recv() {
-                let Ok(guard) = resize_master.lock() else {
-                    break;
-                };
-                if guard
+                if master
                     .resize(PtySize {
                         rows,
                         cols,
