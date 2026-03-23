@@ -70,6 +70,27 @@ impl SessionStore {
         serde_json::from_slice(&plaintext).context("failed parsing session state")
     }
 
+    #[allow(dead_code)] // Used in tests; will be used by session management
+    pub fn list(&self) -> anyhow::Result<Vec<SessionRecord>> {
+        let dir = self.sessions_dir();
+        let mut records = Vec::new();
+        for entry in fs::read_dir(&dir).context("failed reading sessions directory")? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("json") {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    match self.load(stem) {
+                        Ok(record) => records.push(record),
+                        Err(e) => {
+                            tracing::warn!("skipping session file {}: {e}", path.display());
+                        }
+                    }
+                }
+            }
+        }
+        Ok(records)
+    }
+
     fn sessions_dir(&self) -> PathBuf {
         self.root.join("sessions")
     }
