@@ -44,6 +44,17 @@ struct HostContext {
     tui_state: TuiState,
 }
 
+impl HostContext {
+    /// Seal a message and send it to the peer. No-op if the channel is not confirmed.
+    fn send_secure(&mut self, msg: &SecureMessage) -> anyhow::Result<()> {
+        let Some(channel) = self.chan.confirmed_channel() else {
+            return Ok(());
+        };
+        let sealed = channel.seal(msg)?;
+        send_peer_frame(&self.relay_tx, &self.identity.session_id, PeerFrame::Secure(sealed))
+    }
+}
+
 use crate::{
     ai_tools::{resolve_tool, tool_supports_structured},
     pty::PtySession,
@@ -261,15 +272,11 @@ async fn run_single_host_session(params: HostSessionParams) -> anyhow::Result<()
                     let Some(bytes) = output else { continue; };
                     let len = bytes.len() as u64;
                     ctx.scrollback.push(bytes.clone());
-                    if ctx.chan.confirmed {
-                        if let Some(channel) = ctx.chan.channel.as_mut() {
-                            let sealed = channel.seal(&SecureMessage::PtyOutput(bytes))?;
-                            let frame = PeerFrame::Secure(sealed);
-                            if let Err(err) = send_peer_frame(&ctx.relay_tx, &ctx.identity.session_id, frame) {
-                                warn!(error = %err, "failed sending PTY output");
-                            }
-                            ctx.tui_state.bytes_sent += len;
+                    if ctx.chan.is_confirmed() {
+                        if let Err(err) = ctx.send_secure(&SecureMessage::PtyOutput(bytes)) {
+                            warn!(error = %err, "failed sending PTY output");
                         }
+                        ctx.tui_state.bytes_sent += len;
                     } else {
                         queue_backlog(&mut ctx.output_backlog, bytes);
                     }
@@ -277,14 +284,8 @@ async fn run_single_host_session(params: HostSessionParams) -> anyhow::Result<()
                 // ── JSONL watcher: agent events (for structured-capable tools) ──
                 agent_event = async { event_rx.as_mut().unwrap().recv().await }, if event_rx.is_some() => {
                     let Some(evt) = agent_event else { continue; };
-                    if ctx.chan.confirmed {
-                        if let Some(channel) = ctx.chan.channel.as_mut() {
-                            let sealed = channel.seal(&SecureMessage::AgentEvent(evt))?;
-                            let frame = PeerFrame::Secure(sealed);
-                            if let Err(err) = send_peer_frame(&ctx.relay_tx, &ctx.identity.session_id, frame) {
-                                warn!(error = %err, "failed sending agent event");
-                            }
-                        }
+                    if let Err(err) = ctx.send_secure(&SecureMessage::AgentEvent(evt)) {
+                        warn!(error = %err, "failed sending agent event");
                     }
                 }
                 // ── JSONL watcher: log messages → TUI ──
@@ -382,14 +383,7 @@ async fn run_single_host_session(params: HostSessionParams) -> anyhow::Result<()
                     let code = exit_code.unwrap_or(1);
                     ctx.tui_state.push_log(LogLevel::Info, format!("Process exited (code {code})"));
                     info!(session_id = %ctx.identity.session_id, code = code, "PTY process exited");
-                    if ctx.chan.confirmed
-                        && let Some(channel) = ctx.chan.channel.as_mut()
-                    {
-                        let msg = SecureMessage::SessionEnded { exit_code: code };
-                        if let Ok(sealed) = channel.seal(&msg) {
-                            let _ = send_peer_frame(&ctx.relay_tx, &ctx.identity.session_id, PeerFrame::Secure(sealed));
-                        }
-                    }
+                    let _ = ctx.send_secure(&SecureMessage::SessionEnded { exit_code: code });
                     tui_handle.draw(&ctx.tui_state)?;
                     sleep(Duration::from_secs(1)).await;
                     break;
@@ -438,9 +432,7 @@ fn handle_route(
                 "peer handshake received"
             );
 
-            ctx.chan.channel = Some(hs.channel);
-            ctx.chan.confirmed = false;
-            ctx.chan.expected_peer_mac = Some(hs.expected_peer_mac);
+            ctx.chan.start_handshake(hs.channel, hs.expected_peer_mac);
         }
         PeerFrame::HandshakeConfirm(confirm) => {
             if !verify_handshake_confirm(&confirm, &ctx.chan) {
@@ -452,8 +444,7 @@ fn handle_route(
             ctx.tui_state.status = PeerStatus::Secure;
             ctx.tui_state.push_log(LogLevel::Success, "E2E encryption established");
             info!(session_id = %ctx.identity.session_id, "handshake confirmed, channel trusted");
-            ctx.chan.confirmed = true;
-            ctx.chan.expected_peer_mac = None;
+            ctx.chan.confirm();
 
             // Replay scrollback first so reconnecting clients catch up on
             // output that was produced while they were disconnected.
@@ -471,37 +462,23 @@ fn handle_route(
                     "replaying scrollback"
                 );
                 for bytes in replay {
-                    if let Some(ch) = ctx.chan.channel.as_mut() {
-                        let sealed = ch.seal(&SecureMessage::PtyOutput(bytes))?;
-                        send_peer_frame(&ctx.relay_tx, &ctx.identity.session_id, PeerFrame::Secure(sealed))?;
-                    }
+                    ctx.send_secure(&SecureMessage::PtyOutput(bytes))?;
                 }
             }
 
             // Then drain the handshake-window backlog (output produced
             // between handshake start and confirm).
             while let Some(bytes) = ctx.output_backlog.pop_front() {
-                if let Some(ch) = ctx.chan.channel.as_mut() {
-                    let sealed = ch.seal(&SecureMessage::PtyOutput(bytes))?;
-                    send_peer_frame(&ctx.relay_tx, &ctx.identity.session_id, PeerFrame::Secure(sealed))?;
-                }
+                ctx.send_secure(&SecureMessage::PtyOutput(bytes))?;
             }
 
-            let notice = SecureMessage::Notification(protocol::protocol::PushNotification {
+            ctx.send_secure(&SecureMessage::Notification(protocol::protocol::PushNotification {
                 title: format!("Connected to {}", ctx.identity.tool_name),
                 body: "Session encryption established".to_string(),
-            });
-            if let Some(ch) = ctx.chan.channel.as_mut() {
-                let sealed = ch.seal(&notice)?;
-                send_peer_frame(&ctx.relay_tx, &ctx.identity.session_id, PeerFrame::Secure(sealed))?;
-            }
-
+            }))?;
         }
         PeerFrame::Secure(sealed) => {
-            if !ctx.chan.confirmed {
-                return Ok(());
-            }
-            let Some(channel) = ctx.chan.channel.as_mut() else {
+            let Some(channel) = ctx.chan.confirmed_channel() else {
                 return Ok(());
             };
             let message = channel.open(&sealed)?;
@@ -666,13 +643,9 @@ async fn run_takeover(
                 ctx.scrollback.push(bytes.clone());
                 out.write_all(&bytes).await?;
                 out.flush().await?;
-                if ctx.chan.confirmed {
-                    if let Some(channel) = ctx.chan.channel.as_mut() {
-                        if let Ok(sealed) = channel.seal(&SecureMessage::PtyOutput(bytes)) {
-                            let _ = send_peer_frame(&ctx.relay_tx, &ctx.identity.session_id, PeerFrame::Secure(sealed));
-                        }
-                        ctx.tui_state.bytes_sent += len;
-                    }
+                if ctx.chan.is_confirmed() {
+                    let _ = ctx.send_secure(&SecureMessage::PtyOutput(bytes));
+                    ctx.tui_state.bytes_sent += len;
                 }
             }
             // ── Keyboard + resize → PTY ──
@@ -690,13 +663,7 @@ async fn run_takeover(
             // ── JSONL watcher: agent events → relay ──
             agent_event = async { event_rx.as_mut().unwrap().recv().await }, if event_rx.is_some() => {
                 let Some(evt) = agent_event else { continue; };
-                if ctx.chan.confirmed {
-                    if let Some(channel) = ctx.chan.channel.as_mut() {
-                        if let Ok(sealed) = channel.seal(&SecureMessage::AgentEvent(evt)) {
-                            let _ = send_peer_frame(&ctx.relay_tx, &ctx.identity.session_id, PeerFrame::Secure(sealed));
-                        }
-                    }
-                }
+                let _ = ctx.send_secure(&SecureMessage::AgentEvent(evt));
             }
             // ── JSONL watcher: log (ignored during takeover, no TUI) ──
             _log = async { watcher_log_rx.as_mut().unwrap().recv().await }, if watcher_log_rx.is_some() => {}

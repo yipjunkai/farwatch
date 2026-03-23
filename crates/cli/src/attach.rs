@@ -115,9 +115,7 @@ pub async fn run_attach(args: AttachArgs) -> anyhow::Result<()> {
                     stdout.flush().await?;
                     break;
                 }
-                if chan.confirmed
-                    && let Some(channel) = chan.channel.as_mut()
-                {
+                if let Some(channel) = chan.confirmed_channel() {
                     let sealed = channel.seal(&SecureMessage::PtyInput(bytes))?;
                     send_peer_frame(&relay_tx, &pairing.session_id, PeerFrame::Secure(sealed))?;
                 }
@@ -260,9 +258,7 @@ async fn handle_route(
                 return Ok(RouteAction::Continue); // Duplicate or stale — ignored
             };
 
-            chan.channel = Some(hs.channel);
-            chan.confirmed = false;
-            chan.expected_peer_mac = Some(hs.expected_peer_mac);
+            chan.start_handshake(hs.channel, hs.expected_peer_mac);
 
             info!(peer_fingerprint = %handshake.fingerprint, "handshake received, awaiting confirmation");
         }
@@ -274,8 +270,7 @@ async fn handle_route(
             }
 
             info!("handshake confirmed, channel trusted");
-            chan.confirmed = true;
-            chan.expected_peer_mac = None;
+            chan.confirm();
 
             // Clear the screen so connection info doesn't bleed into the terminal output.
             stdout.write_all(b"\x1b[2J\x1b[H").await?;
@@ -283,16 +278,13 @@ async fn handle_route(
 
             // Send our terminal size so the host PTY renders at the correct dimensions.
             let (cols, rows) = terminal::size().unwrap_or(crate::constants::DEFAULT_TERMINAL_SIZE);
-            if let Some(ch) = chan.channel.as_mut() {
+            if let Some(ch) = chan.confirmed_channel() {
                 let sealed = ch.seal(&SecureMessage::Resize { cols, rows })?;
                 send_peer_frame(relay_tx, &pairing.session_id, PeerFrame::Secure(sealed))?;
             }
         }
         PeerFrame::Secure(sealed) => {
-            if !chan.confirmed {
-                return Ok(RouteAction::Continue);
-            }
-            let Some(channel) = chan.channel.as_mut() else {
+            let Some(channel) = chan.confirmed_channel() else {
                 return Ok(RouteAction::Continue);
             };
             match channel.open(&sealed)? {
@@ -350,13 +342,10 @@ fn send_resize(
     session_id: &str,
     chan: &mut ChannelState,
 ) -> anyhow::Result<()> {
-    if !chan.confirmed {
-        return Ok(());
-    }
-    let Some(channel) = chan.channel.as_mut() else {
+    let Some(channel) = chan.confirmed_channel() else {
         return Ok(());
     };
-    let (cols, rows) = terminal::size().unwrap_or((120, 40));
+    let (cols, rows) = terminal::size().unwrap_or(crate::constants::DEFAULT_TERMINAL_SIZE);
     let sealed = channel.seal(&SecureMessage::Resize { cols, rows })?;
     send_peer_frame(relay_tx, session_id, PeerFrame::Secure(sealed))
 }

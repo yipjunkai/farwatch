@@ -17,26 +17,76 @@ use protocol::{
 
 use crate::relay_client::RelayConnection;
 
-/// Mutable state for the encrypted channel during a session.
-pub struct ChannelState {
-    pub channel: Option<SecureChannel>,
-    pub confirmed: bool,
-    pub expected_peer_mac: Option<[u8; 32]>,
+/// State machine for the encrypted channel during a session.
+///
+/// Transitions: `Disconnected` → `Handshaking` → `Confirmed` → `Disconnected` (on reset).
+/// The enum makes impossible states unrepresentable (e.g. confirmed without a channel).
+pub enum ChannelState {
+    /// No channel established.
+    Disconnected,
+    /// Handshake sent, waiting for peer confirmation.
+    Handshaking {
+        channel: SecureChannel,
+        expected_peer_mac: [u8; 32],
+    },
+    /// Handshake confirmed, channel is trusted and ready for use.
+    Confirmed { channel: SecureChannel },
 }
 
 impl ChannelState {
     pub fn new() -> Self {
-        Self {
-            channel: None,
-            confirmed: false,
-            expected_peer_mac: None,
-        }
+        Self::Disconnected
     }
 
     pub fn reset(&mut self) {
-        self.channel = None;
-        self.confirmed = false;
-        self.expected_peer_mac = None;
+        *self = Self::Disconnected;
+    }
+
+    /// Returns `true` if the channel is confirmed and ready for sealed messages.
+    pub fn is_confirmed(&self) -> bool {
+        matches!(self, Self::Confirmed { .. })
+    }
+
+    /// Returns `true` if any channel exists (handshaking or confirmed).
+    pub fn has_channel(&self) -> bool {
+        !matches!(self, Self::Disconnected)
+    }
+
+    /// Get a mutable reference to the confirmed channel for sealing/opening messages.
+    /// Returns `None` if not yet confirmed.
+    pub fn confirmed_channel(&mut self) -> Option<&mut SecureChannel> {
+        match self {
+            Self::Confirmed { channel } => Some(channel),
+            _ => None,
+        }
+    }
+
+    /// Transition from Handshaking to Confirmed. Returns false if not in Handshaking state.
+    pub fn confirm(&mut self) -> bool {
+        let old = std::mem::replace(self, Self::Disconnected);
+        match old {
+            Self::Handshaking { channel, .. } => {
+                *self = Self::Confirmed { channel };
+                true
+            }
+            other => {
+                *self = other;
+                false
+            }
+        }
+    }
+
+    /// Get the expected peer MAC (only available during Handshaking).
+    pub fn expected_peer_mac(&self) -> Option<&[u8; 32]> {
+        match self {
+            Self::Handshaking { expected_peer_mac, .. } => Some(expected_peer_mac),
+            _ => None,
+        }
+    }
+
+    /// Transition from Disconnected to Handshaking with the given channel and expected MAC.
+    pub fn start_handshake(&mut self, channel: SecureChannel, expected_peer_mac: [u8; 32]) {
+        *self = Self::Handshaking { channel, expected_peer_mac };
     }
 }
 
@@ -160,7 +210,7 @@ pub fn process_inbound_handshake(
     relay_tx: &mpsc::Sender<RelayMessage>,
 ) -> anyhow::Result<Option<HandshakeResult>> {
     // Ignore duplicate handshakes if we already have a channel.
-    if chan.channel.is_some() {
+    if chan.has_channel() {
         return Ok(None);
     }
 
@@ -223,7 +273,7 @@ pub fn verify_handshake_confirm(
     confirm: &HandshakeConfirm,
     chan: &ChannelState,
 ) -> bool {
-    match &chan.expected_peer_mac {
+    match chan.expected_peer_mac() {
         Some(expected) => confirm.mac == *expected,
         None => {
             warn!("received HandshakeConfirm without pending handshake");
