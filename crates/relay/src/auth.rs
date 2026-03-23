@@ -11,6 +11,12 @@ use subtle::ConstantTimeEq;
 use tracing::{debug, info, warn};
 use zeroize::Zeroizing;
 
+/// Timeout for HTTP requests to the control API.
+const CONTROL_API_TIMEOUT_SECS: u64 = 10;
+
+/// Interval for syncing the revocation list from the control API.
+const REVOCATION_SYNC_INTERVAL_SECS: u64 = 60;
+
 type HmacSha256 = Hmac<Sha256>;
 
 /// Decoded payload from a signed API key.
@@ -49,18 +55,17 @@ impl AuthState {
         hmac_secret_previous: Option<String>,
         control_api_url: Option<String>,
         internal_secret: Option<String>,
-    ) -> Self {
-        Self {
+    ) -> anyhow::Result<Self> {
+        Ok(Self {
             hmac_secret: Zeroizing::new(hmac_secret.into_bytes()),
             hmac_secret_previous: hmac_secret_previous.map(|s| Zeroizing::new(s.into_bytes())),
             revoked_keys: RwLock::new(HashSet::new()),
             control_api_url,
             internal_secret,
             http: reqwest::Client::builder()
-                .timeout(Duration::from_secs(10))
-                .build()
-                .expect("failed to build HTTP client"),
-        }
+                .timeout(Duration::from_secs(CONTROL_API_TIMEOUT_SECS))
+                .build()?,
+        })
     }
 
     /// Verify a signed API key and return the decoded payload.
@@ -123,7 +128,7 @@ impl AuthState {
         };
 
         let url = format!("{}/internal/revoked-keys", base_url);
-        let mut interval = tokio::time::interval(Duration::from_secs(60));
+        let mut interval = tokio::time::interval(Duration::from_secs(REVOCATION_SYNC_INTERVAL_SECS));
 
         loop {
             interval.tick().await;
@@ -267,6 +272,7 @@ mod tests {
             None,
             None,
         )
+        .expect("failed to create AuthState in test")
     }
 
     #[tokio::test]

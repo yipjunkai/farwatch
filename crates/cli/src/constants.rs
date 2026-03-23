@@ -24,3 +24,25 @@ pub const APP_NAME: &str = "farwatch";
 
 /// Client version sent during relay registration.
 pub const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+// ── Shared timing constants ─────────────────────────────────────────────
+
+/// Heartbeat interval for relay keepalive pings.
+pub const HEARTBEAT_INTERVAL_SECS: u64 = 10;
+
+/// TUI redraw interval in milliseconds.
+pub const REDRAW_INTERVAL_MS: u64 = 250;
+
+/// Double-tap Esc timeout for exiting takeover mode (milliseconds).
+pub const DOUBLE_TAP_ESC_MS: u128 = 300;
+
+// ── Shared size constants ───────────────────────────────────────────────
+
+/// Default terminal size fallback (cols, rows) when detection fails.
+pub const DEFAULT_TERMINAL_SIZE: (u16, u16) = (120, 40);
+
+/// Read buffer size for PTY output and stdin readers.
+pub const READ_BUFFER_SIZE: usize = 4096;
+
+/// Output backlog cap in bytes (1 MB). Oldest entries are evicted when exceeded.
+pub const OUTPUT_BACKLOG_CAP: usize = 1024 * 1024;

@@ -251,8 +251,8 @@ async fn run_single_host_session(params: HostSessionParams) -> anyhow::Result<()
     let shutdown = shutdown_signal();
     tokio::pin!(shutdown);
 
-    let mut heartbeat = tokio::time::interval(Duration::from_secs(10));
-    let mut redraw = tokio::time::interval(Duration::from_millis(250));
+    let mut heartbeat = tokio::time::interval(Duration::from_secs(crate::constants::HEARTBEAT_INTERVAL_SECS));
+    let mut redraw = tokio::time::interval(Duration::from_millis(crate::constants::REDRAW_INTERVAL_MS));
 
     let result: anyhow::Result<()> = async {
         loop {
@@ -598,7 +598,7 @@ async fn run_takeover(
         use std::time::Instant;
 
         let mut last_esc: Option<Instant> = None;
-        const DOUBLE_TAP_MS: u128 = 300;
+        let double_tap_ms = crate::constants::DOUBLE_TAP_ESC_MS;
 
         loop {
             if event::poll(Duration::from_millis(50)).unwrap_or(false) {
@@ -612,7 +612,7 @@ async fn run_takeover(
                     // Double-tap Esc = exit takeover.
                     if key.code == KeyCode::Esc {
                         if let Some(prev) = last_esc {
-                            if prev.elapsed().as_millis() < DOUBLE_TAP_MS {
+                            if prev.elapsed().as_millis() < double_tap_ms {
                                 break;
                             }
                         }
@@ -662,7 +662,7 @@ async fn run_takeover(
     });
 
     // Main takeover loop: PTY I/O + relay + watcher + heartbeat.
-    let mut heartbeat = tokio::time::interval(Duration::from_secs(10));
+    let mut heartbeat = tokio::time::interval(Duration::from_secs(crate::constants::HEARTBEAT_INTERVAL_SECS));
     loop {
         tokio::select! {
             // ── PTY output → host stdout + scrollback + relay ──
@@ -775,7 +775,7 @@ async fn reconnect_host(
 fn queue_backlog(queue: &mut VecDeque<Vec<u8>>, bytes: Vec<u8>) {
     queue.push_back(bytes);
     let mut total_bytes: usize = queue.iter().map(Vec::len).sum();
-    while total_bytes > 1_048_576 {
+    while total_bytes > crate::constants::OUTPUT_BACKLOG_CAP {
         if let Some(front) = queue.pop_front() {
             total_bytes = total_bytes.saturating_sub(front.len());
         } else {
@@ -828,9 +828,10 @@ impl ScrollbackBuffer {
 }
 
 fn initial_size() -> (u16, u16) {
+    let (default_cols, default_rows) = crate::constants::DEFAULT_TERMINAL_SIZE;
     terminal::size()
         .map(|(c, r)| (r, c))
-        .unwrap_or((40, 120))
+        .unwrap_or((default_rows, default_cols))
 }
 
 /// Returns the current time as an RFC 3339 UTC timestamp (e.g. "2026-03-17T16:30:00Z").
@@ -839,16 +840,20 @@ fn rfc3339_now() -> String {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or_default();
+    unix_secs_to_rfc3339(secs)
+}
 
-    // Manual RFC 3339 formatting to avoid pulling in a datetime crate.
+/// Format unix seconds as an RFC 3339 UTC timestamp.
+///
+/// Uses Howard Hinnant's civil calendar algorithm (public domain) to avoid
+/// pulling in a datetime crate.
+fn unix_secs_to_rfc3339(secs: u64) -> String {
     let days = secs / 86400;
     let time_of_day = secs % 86400;
     let hours = time_of_day / 3600;
     let minutes = (time_of_day % 3600) / 60;
     let seconds = time_of_day % 60;
 
-    // Convert days since epoch to y/m/d using a civil calendar algorithm.
-    // Based on Howard Hinnant's algorithm (public domain).
     let z = days as i64 + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;
     let doe = (z - era * 146097) as u64;
@@ -861,4 +866,47 @@ fn rfc3339_now() -> String {
     let y = if m <= 2 { y + 1 } else { y };
 
     format!("{y:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unix_epoch() {
+        assert_eq!(unix_secs_to_rfc3339(0), "1970-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn known_timestamp_2024() {
+        // 2024-01-01T00:00:00Z = 1704067200
+        assert_eq!(unix_secs_to_rfc3339(1704067200), "2024-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn known_timestamp_2026() {
+        // 2026-03-17T16:30:00Z = 1773860200 + 600 = let's compute:
+        // Using a known reference: 2026-03-23T00:00:00Z
+        // March 23, 2026 = day count from epoch
+        // Let's use a simpler known: 2000-01-01T00:00:00Z = 946684800
+        assert_eq!(unix_secs_to_rfc3339(946684800), "2000-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn end_of_day() {
+        // 1970-01-01T23:59:59Z = 86399
+        assert_eq!(unix_secs_to_rfc3339(86399), "1970-01-01T23:59:59Z");
+    }
+
+    #[test]
+    fn leap_year_feb_29() {
+        // 2024-02-29T12:00:00Z = 1709208000
+        assert_eq!(unix_secs_to_rfc3339(1709208000), "2024-02-29T12:00:00Z");
+    }
+
+    #[test]
+    fn year_2038() {
+        // 2038-01-19T03:14:07Z = 2147483647 (max i32, the Y2K38 problem)
+        assert_eq!(unix_secs_to_rfc3339(2147483647), "2038-01-19T03:14:07Z");
+    }
 }

@@ -230,24 +230,36 @@ pub enum SecureMessage {
     Unknown(Vec<u8>),
 }
 
+// ── Generic MessagePack encode/decode ────────────────────────────────────
+
+fn encode<T: Serialize>(value: &T) -> CoreResult<Vec<u8>> {
+    rmp_serde::to_vec_named(value).map_err(|err| CoreError::Serialization(err.to_string()))
+}
+
+fn decode<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> CoreResult<T> {
+    rmp_serde::from_slice(bytes).map_err(|err| CoreError::Deserialization(err.to_string()))
+}
+
+// ── Type-specific wrappers (preserve the public API) ────────────────────
+
 pub fn encode_relay(message: &RelayMessage) -> CoreResult<Vec<u8>> {
-    rmp_serde::to_vec_named(message).map_err(|err| CoreError::Serialization(err.to_string()))
+    encode(message)
 }
 
 pub fn decode_relay(bytes: &[u8]) -> CoreResult<RelayMessage> {
-    rmp_serde::from_slice(bytes).map_err(|err| CoreError::Deserialization(err.to_string()))
+    decode(bytes)
 }
 
 pub fn encode_peer_frame(frame: &PeerFrame) -> CoreResult<Vec<u8>> {
-    rmp_serde::to_vec_named(frame).map_err(|err| CoreError::Serialization(err.to_string()))
+    encode(frame)
 }
 
 pub fn decode_peer_frame(bytes: &[u8]) -> CoreResult<PeerFrame> {
-    rmp_serde::from_slice(bytes).map_err(|err| CoreError::Deserialization(err.to_string()))
+    decode(bytes)
 }
 
 pub fn encode_secure_message(message: &SecureMessage) -> CoreResult<Vec<u8>> {
-    rmp_serde::to_vec_named(message).map_err(|err| CoreError::Serialization(err.to_string()))
+    encode(message)
 }
 
 /// Decode a `SecureMessage`, falling back to `SecureMessage::Unknown` for unrecognized variants.

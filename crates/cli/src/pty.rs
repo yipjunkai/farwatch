@@ -9,6 +9,9 @@ use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use tokio::sync::{mpsc as tokio_mpsc, oneshot};
 use tracing::warn;
 
+/// Channel capacity for PTY output chunks.
+const PTY_OUTPUT_CHANNEL_CAPACITY: usize = 512;
+
 pub struct PtySession {
     input_tx: mpsc::Sender<Vec<u8>>,
     resize_tx: mpsc::Sender<(u16, u16)>,
@@ -62,13 +65,13 @@ impl PtySession {
             .context("failed taking PTY writer")?;
         let master: Arc<Mutex<Box<dyn MasterPty + Send>>> = Arc::new(Mutex::new(pair.master));
 
-        let (output_tx, output_rx) = tokio_mpsc::channel::<Vec<u8>>(512);
+        let (output_tx, output_rx) = tokio_mpsc::channel::<Vec<u8>>(PTY_OUTPUT_CHANNEL_CAPACITY);
         let (input_tx, input_rx) = mpsc::channel::<Vec<u8>>();
         let (resize_tx, resize_rx) = mpsc::channel::<(u16, u16)>();
         let (exit_tx, exit_rx) = oneshot::channel::<i32>();
 
         thread::spawn(move || {
-            let mut buffer = [0_u8; 4096];
+            let mut buffer = [0_u8; crate::constants::READ_BUFFER_SIZE];
             loop {
                 match reader.read(&mut buffer) {
                     Ok(0) => break,

@@ -20,9 +20,81 @@ use protocol::protocol::{
 
 use crate::auth::{ApiKeyPayload, AuthState};
 
+/// Typed error for relay-internal operations, replacing ad-hoc `Result<_, String>`.
+#[derive(Debug)]
+pub enum SessionError {
+    /// Global session capacity reached.
+    AtCapacity { current: usize, max: usize },
+    /// Per-IP session limit reached.
+    #[allow(dead_code)] // ip kept for future logging/metrics
+    IpLimitReached { ip: IpAddr, current: usize, max: usize },
+    /// Per-user (tier-based) session limit reached.
+    UserLimitReached { tier: String, current: usize, max: usize },
+    /// No compatible protocol version between client and server.
+    ProtocolMismatch { client_range: String, server_range: String },
+    /// Client version string is unparseable or too old.
+    ClientVersionInvalid(String),
+    /// Request field validation failure.
+    InvalidRequest(String),
+    /// Session locked after too many failed pairing attempts.
+    SessionLocked,
+    /// Pairing code does not match.
+    PairingMismatch,
+    /// Session not found.
+    SessionNotFound,
+    /// Peer role slot already occupied and resume token doesn't match.
+    AlreadyConnected { role: PeerRole },
+    /// Resume token doesn't match.
+    InvalidResumeToken { role: PeerRole },
+    /// Target peer is offline, cannot forward.
+    PeerOffline,
+    /// Bounded channel full, peer is slow to consume.
+    ChannelFull,
+}
+
+impl std::fmt::Display for SessionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AtCapacity { current, max } => {
+                write!(f, "server at capacity ({current}/{max}), try again later")
+            }
+            Self::IpLimitReached { current, max, .. } => {
+                write!(f, "too many sessions from this IP ({current}/{max})")
+            }
+            Self::UserLimitReached { tier, current, max } => {
+                write!(f, "session limit reached ({current}/{max} for {tier} tier). Upgrade your plan for more sessions.")
+            }
+            Self::ProtocolMismatch { client_range, server_range } => {
+                write!(f, "no compatible protocol version: client supports {client_range}, server supports {server_range}")
+            }
+            Self::ClientVersionInvalid(msg) => write!(f, "{msg}"),
+            Self::InvalidRequest(msg) => write!(f, "{msg}"),
+            Self::SessionLocked => {
+                write!(f, "session locked: too many failed pairing attempts")
+            }
+            Self::PairingMismatch => write!(f, "invalid pairing code"),
+            Self::SessionNotFound => write!(f, "session not found"),
+            Self::AlreadyConnected { role } => {
+                write!(f, "{role:?} already connected for session")
+            }
+            Self::InvalidResumeToken { role } => {
+                write!(f, "invalid {role:?} resume token")
+            }
+            Self::PeerOffline => write!(f, "peer is offline"),
+            Self::ChannelFull => write!(f, "failed forwarding payload to peer"),
+        }
+    }
+}
+
 /// Channel capacity for per-peer relay message queues. Provides backpressure
 /// instead of unbounded memory growth when a peer is slow to consume.
 const PEER_CHANNEL_CAPACITY: usize = 1024;
+
+/// Interval for the stale session cleanup loop.
+const CLEANUP_INTERVAL_SECS: u64 = 60;
+
+/// Length of generated resume tokens (alphanumeric characters).
+const RESUME_TOKEN_LENGTH: usize = 40;
 
 #[derive(Clone)]
 struct PeerSlot {
@@ -155,7 +227,7 @@ impl RelayState {
     }
 
     /// Check whether a new session from this user is allowed.
-    fn check_user_limit(&self, user_id: &str, tier: &str) -> Result<(), String> {
+    fn check_user_limit(&self, user_id: &str, tier: &str) -> Result<(), SessionError> {
         let limit = self.tier_limit(tier);
         if limit == 0 {
             return Ok(()); // unlimited
@@ -169,9 +241,11 @@ impl RelayState {
                 max = limit,
                 "per-user session limit reached"
             );
-            return Err(format!(
-                "session limit reached ({count}/{limit} for {tier} tier). Upgrade your plan for more sessions."
-            ));
+            return Err(SessionError::UserLimitReached {
+                tier: tier.to_string(),
+                current: count,
+                max: limit,
+            });
         }
         Ok(())
     }
@@ -193,14 +267,17 @@ impl RelayState {
     }
 
     /// Check whether a new session from this IP is allowed.
-    fn check_limits(&self, ip: IpAddr) -> Result<(), String> {
+    fn check_limits(&self, ip: IpAddr) -> Result<(), SessionError> {
         if self.max_sessions > 0 && self.sessions.len() >= self.max_sessions {
             warn!(
                 current = self.sessions.len(),
                 max = self.max_sessions,
                 "global session limit reached"
             );
-            return Err("server at capacity, try again later".into());
+            return Err(SessionError::AtCapacity {
+                current: self.sessions.len(),
+                max: self.max_sessions,
+            });
         }
 
         if self.max_sessions_per_ip > 0 {
@@ -212,7 +289,11 @@ impl RelayState {
                     max = self.max_sessions_per_ip,
                     "per-IP session limit reached"
                 );
-                return Err("too many sessions from this IP".into());
+                return Err(SessionError::IpLimitReached {
+                    ip,
+                    current: count,
+                    max: self.max_sessions_per_ip,
+                });
             }
         }
 
@@ -236,7 +317,7 @@ impl RelayState {
     }
 
     pub async fn cleanup_loop(self: Arc<Self>) {
-        let mut ticker = tokio::time::interval(Duration::from_secs(60));
+        let mut ticker = tokio::time::interval(Duration::from_secs(CLEANUP_INTERVAL_SECS));
         loop {
             ticker.tick().await;
             let now = Instant::now();
@@ -265,14 +346,15 @@ impl RelayState {
         }
     }
 
-    fn validate_version(&self, value: &str) -> Result<(), String> {
-        let parsed =
-            Version::parse(value).map_err(|_| format!("invalid client version string: {value}"))?;
+    fn validate_version(&self, value: &str) -> Result<(), SessionError> {
+        let parsed = Version::parse(value).map_err(|_| {
+            SessionError::ClientVersionInvalid(format!("invalid client version string: {value}"))
+        })?;
         if parsed < self.min_version {
-            return Err(format!(
+            return Err(SessionError::ClientVersionInvalid(format!(
                 "client version {parsed} is not supported, minimum required is {}",
                 self.min_version
-            ));
+            )));
         }
         Ok(())
     }
@@ -282,7 +364,7 @@ impl RelayState {
         request: &RegisterRequest,
         sender: mpsc::Sender<RelayMessage>,
         ip: IpAddr,
-    ) -> Result<RegisterResponse, String> {
+    ) -> Result<RegisterResponse, SessionError> {
         validate_register_request(request)?;
 
         // Protocol version range negotiation:
@@ -295,9 +377,10 @@ impl RelayState {
 
         let negotiated = std::cmp::min(client_max, server_max);
         if negotiated < client_min || negotiated < server_min {
-            return Err(format!(
-                "no compatible protocol version: client supports {client_min}-{client_max}, server supports {server_min}-{server_max}"
-            ));
+            return Err(SessionError::ProtocolMismatch {
+                client_range: format!("{client_min}-{client_max}"),
+                server_range: format!("{server_min}-{server_max}"),
+            });
         }
 
         self.validate_version(&request.client_version)?;
@@ -325,7 +408,7 @@ impl RelayState {
 
             if session.failed_pairing_attempts >= MAX_PAIRING_FAILURES {
                 warn!(session_id = %request.session_id, "session locked out after too many failed pairing attempts");
-                return Err("session locked: too many failed pairing attempts".into());
+                return Err(SessionError::SessionLocked);
             }
 
             if session.pairing_code != request.pairing_code {
@@ -335,7 +418,7 @@ impl RelayState {
                     attempts = session.failed_pairing_attempts,
                     "invalid pairing code"
                 );
-                return Err("invalid pairing code".into());
+                return Err(SessionError::PairingMismatch);
             }
 
             let resume_token = {
@@ -343,14 +426,14 @@ impl RelayState {
                 if host.connected {
                     let can_resume = request.resume_token.as_ref() == Some(&host.resume_token);
                     if !can_resume {
-                        return Err("host already connected for session".into());
+                        return Err(SessionError::AlreadyConnected { role: PeerRole::Host });
                     }
                 }
 
                 if let Some(token) = &request.resume_token
                     && token != &host.resume_token
                 {
-                    return Err("invalid host resume token".into());
+                    return Err(SessionError::InvalidResumeToken { role: PeerRole::Host });
                 }
 
                 host.sender = Some(sender);
@@ -374,11 +457,11 @@ impl RelayState {
         let mut session = self
             .sessions
             .get_mut(&request.session_id)
-            .ok_or_else(|| "unknown session id".to_string())?;
+            .ok_or(SessionError::SessionNotFound)?;
 
         if session.failed_pairing_attempts >= MAX_PAIRING_FAILURES {
             warn!(session_id = %request.session_id, "session locked out after too many failed pairing attempts");
-            return Err("session locked: too many failed pairing attempts".into());
+            return Err(SessionError::SessionLocked);
         }
 
         if session.pairing_code != request.pairing_code {
@@ -388,7 +471,7 @@ impl RelayState {
                 attempts = session.failed_pairing_attempts,
                 "invalid pairing code"
             );
-            return Err("invalid pairing code".into());
+            return Err(SessionError::PairingMismatch);
         }
 
         let resume_token = {
@@ -396,14 +479,14 @@ impl RelayState {
             if client.connected {
                 let can_resume = request.resume_token.as_ref() == Some(&client.resume_token);
                 if !can_resume {
-                    return Err("client already connected for session".into());
+                    return Err(SessionError::AlreadyConnected { role: PeerRole::Client });
                 }
             }
 
             if let Some(token) = &request.resume_token
                 && token != &client.resume_token
             {
-                return Err("invalid client resume token".into());
+                return Err(SessionError::InvalidResumeToken { role: PeerRole::Client });
             }
 
             client.sender = Some(sender);
@@ -441,23 +524,23 @@ impl RelayState {
             .unwrap_or(false)
     }
 
-    fn route(&self, source_role: PeerRole, route: RelayRoute) -> Result<(), String> {
+    fn route(&self, source_role: PeerRole, route: RelayRoute) -> Result<(), SessionError> {
         let mut session = self
             .sessions
             .get_mut(&route.session_id)
-            .ok_or_else(|| "session not found".to_string())?;
+            .ok_or(SessionError::SessionNotFound)?;
 
         let target_role = source_role.opposite();
         let target = session.slot(target_role);
         if let Some(sender) = &target.sender {
             sender
                 .try_send(RelayMessage::Route(route))
-                .map_err(|_| "failed forwarding payload to peer".to_string())?;
+                .map_err(|_| SessionError::ChannelFull)?;
             session.last_activity = Instant::now();
             return Ok(());
         }
 
-        Err("peer is offline".to_string())
+        Err(SessionError::PeerOffline)
     }
 
     fn notify_peer_status(&self, session_id: &str, role: PeerRole, online: bool) {
@@ -487,33 +570,33 @@ const MAX_CLIENT_VERSION_LEN: usize = 32;
 const MAX_RESUME_TOKEN_LEN: usize = 64;
 
 /// Validate format and length constraints on `RegisterRequest` fields.
-fn validate_register_request(request: &RegisterRequest) -> Result<(), String> {
+fn validate_register_request(request: &RegisterRequest) -> Result<(), SessionError> {
     // session_id: must be valid UUID v4 format (36 chars: 8-4-4-4-12 hex)
     if request.session_id.len() > MAX_SESSION_ID_LEN {
-        return Err("session_id exceeds maximum length".into());
+        return Err(SessionError::InvalidRequest("session_id exceeds maximum length".into()));
     }
     if uuid::Uuid::parse_str(&request.session_id).is_err() {
-        return Err("session_id is not a valid UUID".into());
+        return Err(SessionError::InvalidRequest("session_id is not a valid UUID".into()));
     }
 
     // pairing_code: expected format XXXXXX-XXXXXX-XXXXXX (20 chars, uppercase alphanumeric + dashes)
     if request.pairing_code.len() > MAX_PAIRING_CODE_LEN {
-        return Err("pairing_code exceeds maximum length".into());
+        return Err(SessionError::InvalidRequest("pairing_code exceeds maximum length".into()));
     }
     if !is_valid_pairing_code(&request.pairing_code) {
-        return Err("pairing_code has invalid format".into());
+        return Err(SessionError::InvalidRequest("pairing_code has invalid format".into()));
     }
 
     // client_version
     if request.client_version.len() > MAX_CLIENT_VERSION_LEN {
-        return Err("client_version exceeds maximum length".into());
+        return Err(SessionError::InvalidRequest("client_version exceeds maximum length".into()));
     }
 
     // resume_token (optional)
     if let Some(token) = &request.resume_token
         && token.len() > MAX_RESUME_TOKEN_LEN
     {
-        return Err("resume_token exceeds maximum length".into());
+        return Err(SessionError::InvalidRequest("resume_token exceeds maximum length".into()));
     }
 
     Ok(())
@@ -568,8 +651,8 @@ pub async fn ws_handler(
     if let Some(api_key) = params.api_key {
         match state.auth.verify_api_key(&api_key).await {
             Some(payload) => {
-                if let Err(msg) = state.check_user_limit(&payload.uid, &payload.tier) {
-                    return (StatusCode::TOO_MANY_REQUESTS, msg).into_response();
+                if let Err(err) = state.check_user_limit(&payload.uid, &payload.tier) {
+                    return (StatusCode::TOO_MANY_REQUESTS, err.to_string()).into_response();
                 }
                 info!(
                     user_id = %payload.uid,
@@ -687,8 +770,8 @@ async fn handle_socket(
     let (tx, mut rx) = mpsc::channel::<RelayMessage>(PEER_CHANNEL_CAPACITY);
     let register_response = match state.register(&register_request, tx.clone(), ip) {
         Ok(registered) => registered,
-        Err(message) => {
-            let _ = send_error(&mut sink, &message).await;
+        Err(err) => {
+            let _ = send_error(&mut sink, &err.to_string()).await;
             return;
         }
     };
@@ -743,8 +826,8 @@ async fn handle_socket(
                                     let _ = tx.try_send(RelayMessage::Error(RelayError {
                                         message: "route session_id does not match registered session".into(),
                                     }));
-                                } else if let Err(message) = state.route(register_request.role, route) {
-                                    let _ = tx.try_send(RelayMessage::Error(RelayError { message }));
+                                } else if let Err(err) = state.route(register_request.role, route) {
+                                    let _ = tx.try_send(RelayMessage::Error(RelayError { message: err.to_string() }));
                                 }
                             }
                             Ok(RelayMessage::Ping(value)) => {
@@ -848,6 +931,6 @@ fn generate_resume_token() -> String {
     thread_rng()
         .sample_iter(&Alphanumeric)
         .map(char::from)
-        .take(40)
+        .take(RESUME_TOKEN_LENGTH)
         .collect()
 }

@@ -7,7 +7,7 @@ use anyhow::Context;
 use axum::{Router, routing::get};
 use clap::Parser;
 use tokio::net::TcpListener;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::auth::AuthState;
 use crate::relay::{RelayState, health_handler, ws_handler};
@@ -72,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
         } else {
             Some(args.internal_secret.clone())
         },
-    ));
+    )?);
 
     let tier_limits = relay::TierLimits {
         free: args.tier_limit_free,
@@ -142,11 +142,18 @@ async fn shutdown_signal() {
 
     #[cfg(unix)]
     {
-        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to register SIGTERM handler");
-        tokio::select! {
-            _ = ctrl_c => { info!("received SIGINT, initiating graceful shutdown"); }
-            _ = sigterm.recv() => { info!("received SIGTERM, initiating graceful shutdown"); }
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sigterm) => {
+                tokio::select! {
+                    _ = ctrl_c => { info!("received SIGINT, initiating graceful shutdown"); }
+                    _ = sigterm.recv() => { info!("received SIGTERM, initiating graceful shutdown"); }
+                }
+            }
+            Err(err) => {
+                warn!(error = %err, "failed to register SIGTERM handler, falling back to SIGINT only");
+                ctrl_c.await.ok();
+                info!("received SIGINT, initiating graceful shutdown");
+            }
         }
     }
 

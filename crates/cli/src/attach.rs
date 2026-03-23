@@ -22,6 +22,12 @@ use crate::common::{
 };
 use crate::relay_client::RelayConnection;
 
+/// Channel capacity for stdin input chunks.
+const STDIN_CHANNEL_CAPACITY: usize = 256;
+
+/// Channel capacity for resize signal notifications.
+const RESIZE_CHANNEL_CAPACITY: usize = 32;
+
 #[derive(Debug, Clone, Args)]
 pub struct AttachArgs {
     #[arg(long)]
@@ -62,9 +68,9 @@ pub async fn run_attach(args: AttachArgs) -> anyhow::Result<()> {
 
     let mut stdin = tokio::io::stdin();
     let mut stdout = tokio::io::stdout();
-    let (stdin_tx, mut stdin_rx) = mpsc::channel::<Vec<u8>>(256);
+    let (stdin_tx, mut stdin_rx) = mpsc::channel::<Vec<u8>>(STDIN_CHANNEL_CAPACITY);
     tokio::spawn(async move {
-        let mut buf = [0_u8; 4096];
+        let mut buf = [0_u8; crate::constants::READ_BUFFER_SIZE];
         loop {
             match stdin.read(&mut buf).await {
                 Ok(0) => break,
@@ -78,7 +84,7 @@ pub async fn run_attach(args: AttachArgs) -> anyhow::Result<()> {
         }
     });
 
-    let (resize_tx, mut resize_rx) = mpsc::channel::<()>(32);
+    let (resize_tx, mut resize_rx) = mpsc::channel::<()>(RESIZE_CHANNEL_CAPACITY);
     #[cfg(unix)]
     {
         let mut resize_signal =
@@ -96,7 +102,7 @@ pub async fn run_attach(args: AttachArgs) -> anyhow::Result<()> {
     let shutdown = shutdown_signal();
     tokio::pin!(shutdown);
 
-    let mut heartbeat = tokio::time::interval(Duration::from_secs(10));
+    let mut heartbeat = tokio::time::interval(Duration::from_secs(crate::constants::HEARTBEAT_INTERVAL_SECS));
 
     loop {
         tokio::select! {
@@ -276,7 +282,7 @@ async fn handle_route(
             stdout.flush().await?;
 
             // Send our terminal size so the host PTY renders at the correct dimensions.
-            let (cols, rows) = terminal::size().unwrap_or((120, 40));
+            let (cols, rows) = terminal::size().unwrap_or(crate::constants::DEFAULT_TERMINAL_SIZE);
             if let Some(ch) = chan.channel.as_mut() {
                 let sealed = ch.seal(&SecureMessage::Resize { cols, rows })?;
                 send_peer_frame(relay_tx, &pairing.session_id, PeerFrame::Secure(sealed))?;
