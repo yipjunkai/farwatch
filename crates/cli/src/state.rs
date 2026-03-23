@@ -12,7 +12,7 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct SessionRecord {
     pub session_id: String,
     pub relay_url: String,
@@ -23,7 +23,39 @@ pub struct SessionRecord {
     pub command_args: Vec<String>,
     pub created_at: String,
     pub public_key: [u8; 32],
-    pub secret_key: [u8; 32],
+    pub(crate) secret_key: [u8; 32],
+}
+
+impl SessionRecord {
+    /// Access the secret key. Prefer passing by reference to avoid copies.
+    #[allow(dead_code)] // Used in tests; will be used by session resume
+    pub(crate) fn secret_key(&self) -> &[u8; 32] {
+        &self.secret_key
+    }
+}
+
+impl std::fmt::Debug for SessionRecord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionRecord")
+            .field("session_id", &self.session_id)
+            .field("relay_url", &self.relay_url)
+            .field("pairing_code", &self.pairing_code)
+            .field("resume_token", &"[REDACTED]")
+            .field("tool", &self.tool)
+            .field("command", &self.command)
+            .field("command_args", &self.command_args)
+            .field("created_at", &self.created_at)
+            .field("public_key", &"[REDACTED]")
+            .field("secret_key", &"[REDACTED]")
+            .finish()
+    }
+}
+
+impl Drop for SessionRecord {
+    fn drop(&mut self) {
+        self.secret_key.zeroize();
+        self.public_key.zeroize();
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -236,7 +268,7 @@ mod tests {
         store.save(&record).unwrap();
         let loaded = store.load("sess-1").unwrap();
         assert_eq!(loaded.session_id, "sess-1");
-        assert_eq!(loaded.secret_key, [2u8; 32]);
+        assert_eq!(*loaded.secret_key(), [2u8; 32]);
         assert_eq!(loaded.public_key, [1u8; 32]);
     }
 
