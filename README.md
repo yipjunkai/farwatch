@@ -22,7 +22,10 @@ Your Machine                         Cloud                          Your Phone
 ## Install
 
 ```bash
-# macOS / Linux (recommended)
+# Homebrew (macOS / Linux)
+brew install yipjunkai/farwatch/farwatch
+
+# Shell script
 curl -fsSL https://raw.githubusercontent.com/yipjunkai/farwatch/main/install.sh | sh
 
 # From source

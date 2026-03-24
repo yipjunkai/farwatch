@@ -81,61 +81,59 @@ jobs:
           files: artifacts/**/*.tar.gz
 
   update-formula:
-    name: Update Homebrew Formula
+    name: Update Homebrew Tap
     needs: release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout tap repo
+        uses: actions/checkout@v4
         with:
-          ref: main
+          repository: yipjunkai/homebrew-farwatch
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Update formula with SHA256 hashes
+      - name: Compute SHA256 hashes
+        id: hashes
         shell: bash
         run: |
-          tag="${GITHUB_REF#refs/tags/}"
-          version="${tag#v}"
-          sha_x86_mac=$(sha256sum artifacts/farwatch-x86_64-apple-darwin/*.tar.gz | awk '{print $1}')
-          sha_arm_mac=$(sha256sum artifacts/farwatch-aarch64-apple-darwin/*.tar.gz | awk '{print $1}')
-          sha_x86_linux=$(sha256sum artifacts/farwatch-x86_64-unknown-linux-gnu/*.tar.gz | awk '{print $1}')
-          sha_arm_linux=$(sha256sum artifacts/farwatch-aarch64-unknown-linux-gnu/*.tar.gz | awk '{print $1}')
-          python3 -c "
-          template = open('Formula/farwatch.rb').read()
-          import re
-          # Update version
-          template = re.sub(r'version \"[^\"]+\"', f'version \"${version}\"', template)
-          # Update tag in URLs
-          template = re.sub(r'download/v[^/]+/', f'download/${tag}/', template)
-          template = re.sub(r'farwatch-v[^-]+-', f'farwatch-${tag}-', template)
-          # Update or insert sha256 lines
-          def set_sha(text, target, sha):
-              lines = text.split('\n')
-              result = []
-              for i, line in enumerate(lines):
-                  result.append(line)
-                  if target in line and 'url' in line:
-                      # Next line should be sha256 or comment
-                      pass
-                  elif i > 0 and target in lines[i-1] and 'url' in lines[i-1]:
-                      # Replace this sha256/comment line
-                      indent = len(line) - len(line.lstrip())
-                      result[-1] = ' ' * indent + f'sha256 \"{sha}\"'
-              return '\n'.join(result)
-          template = set_sha(template, 'x86_64-apple-darwin', '${sha_x86_mac}')
-          template = set_sha(template, 'aarch64-apple-darwin', '${sha_arm_mac}')
-          template = set_sha(template, 'x86_64-unknown-linux-gnu', '${sha_x86_linux}')
-          template = set_sha(template, 'aarch64-unknown-linux-gnu', '${sha_arm_linux}')
-          open('Formula/farwatch.rb', 'w').write(template)
-          "
+          echo "sha_x86_mac=$(sha256sum artifacts/farwatch-x86_64-apple-darwin/*.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "sha_arm_mac=$(sha256sum artifacts/farwatch-aarch64-apple-darwin/*.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "sha_x86_linux=$(sha256sum artifacts/farwatch-x86_64-unknown-linux-gnu/*.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "sha_arm_linux=$(sha256sum artifacts/farwatch-aarch64-unknown-linux-gnu/*.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
-      - name: Commit updated formula
+      - name: Update formula
+        env:
+          TAG: ${{ github.ref_name }}
+          SHA_X86_MAC: ${{ steps.hashes.outputs.sha_x86_mac }}
+          SHA_ARM_MAC: ${{ steps.hashes.outputs.sha_arm_mac }}
+          SHA_X86_LINUX: ${{ steps.hashes.outputs.sha_x86_linux }}
+          SHA_ARM_LINUX: ${{ steps.hashes.outputs.sha_arm_linux }}
+        shell: bash
+        run: |
+          version="${TAG#v}"
+          formula="Formula/farwatch.rb"
+
+          # Update version
+          sed -i "s/version \"[^\"]*\"/version \"${version}\"/" "$formula"
+
+          # Update tag in download URLs
+          sed -i "s|download/v[^/]*/|download/${TAG}/|g" "$formula"
+          sed -i "s|farwatch-v[^-]*-|farwatch-${TAG}-|g" "$formula"
+
+          # Update SHA256 hashes (each sha256 line follows the url line for that target)
+          sed -i "/x86_64-apple-darwin/{n;s/sha256 \"[^\"]*\"/sha256 \"${SHA_X86_MAC}\"/;}" "$formula"
+          sed -i "/aarch64-apple-darwin/{n;s/sha256 \"[^\"]*\"/sha256 \"${SHA_ARM_MAC}\"/;}" "$formula"
+          sed -i "/x86_64-unknown-linux-gnu/{n;s/sha256 \"[^\"]*\"/sha256 \"${SHA_X86_LINUX}\"/;}" "$formula"
+          sed -i "/aarch64-unknown-linux-gnu/{n;s/sha256 \"[^\"]*\"/sha256 \"${SHA_ARM_LINUX}\"/;}" "$formula"
+
+      - name: Commit and push updated formula
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/farwatch.rb
-          git diff --cached --quiet || git commit -m "formula: update to ${GITHUB_REF#refs/tags/}"
+          git diff --cached --quiet || git commit -m "farwatch ${GITHUB_REF#refs/tags/}"
           git push
