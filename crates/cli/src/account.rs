@@ -70,7 +70,7 @@ fn resolve_control_api_url(config: &Config) -> String {
 ///
 /// Default (no flags): device authorization flow — opens browser, user enters code.
 /// Fallbacks: --email + --invite-code for direct registration, --api-key for login.
-pub async fn auth(
+pub async fn authenticate(
     email: Option<&str>,
     api_key: Option<&str>,
     invite_code: Option<&str>,

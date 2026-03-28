@@ -46,7 +46,7 @@ struct HostContext {
     /// instead of being injected into a PTY.
     command_tx: Option<mpsc::Sender<AgentCommand>>,
     /// In API mode, info needed for takeover (spawning `opencode attach`).
-    api_info: Option<ApiInfo>,
+    api_info: Option<OpenCodeApiInfo>,
 }
 
 impl HostContext {
@@ -73,7 +73,7 @@ use crate::{
 };
 
 /// Info needed for API-mode takeover (spawning `opencode attach`).
-struct ApiInfo {
+struct OpenCodeApiInfo {
     base_url: String,
     session_id: String,
 }
@@ -234,7 +234,7 @@ async fn run_single_host_session(params: HostSessionParams) -> anyhow::Result<()
     let mut event_rx: Option<mpsc::Receiver<AgentEvent>> = None;
     let mut watcher_log_rx: Option<mpsc::Receiver<String>> = None;
     let mut command_tx: Option<mpsc::Sender<AgentCommand>> = None;
-    let mut api_info: Option<ApiInfo> = None;
+    let mut api_info: Option<OpenCodeApiInfo> = None;
     let mut adapter: Option<OpenCodeAdapter> = None;
     let mut stream_ended_rx: Option<tokio::sync::oneshot::Receiver<()>> = None;
     let mut pre_tui_logs: Vec<(LogLevel, String)> = Vec::new();
@@ -260,7 +260,7 @@ async fn run_single_host_session(params: HostSessionParams) -> anyhow::Result<()
             }
         }
 
-        api_info = Some(ApiInfo {
+        api_info = Some(OpenCodeApiInfo {
             base_url: oc.base_url().to_string(),
             session_id: oc.session_id().to_string(),
         });
@@ -470,7 +470,7 @@ async fn run_single_host_session(params: HostSessionParams) -> anyhow::Result<()
                         if ctx.api_info.is_some() {
                             // API mode: spawn `opencode attach` for native TUI.
                             // Clone the info to avoid borrow conflict with ctx.
-                            let info = ApiInfo {
+                            let info = OpenCodeApiInfo {
                                 base_url: ctx.api_info.as_ref().unwrap().base_url.clone(),
                                 session_id: ctx.api_info.as_ref().unwrap().session_id.clone(),
                             };
@@ -944,7 +944,7 @@ enum TakeoverApiExit {
 }
 
 async fn run_takeover_api(
-    info: &ApiInfo,
+    info: &OpenCodeApiInfo,
     event_rx: &mut Option<mpsc::Receiver<AgentEvent>>,
     watcher_log_rx: &mut Option<mpsc::Receiver<String>>,
     relay: &mut RelayConnection,

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::Config;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolCandidate {
+pub struct KnownTool {
     pub name: String,
     pub command: String,
     pub args: Vec<String>,
@@ -13,7 +13,7 @@ pub struct ToolCandidate {
 }
 
 #[derive(Debug, Clone)]
-pub struct ToolCommand {
+pub struct ResolvedTool {
     pub name: String,
     pub command: String,
     pub args: Vec<String>,
@@ -36,10 +36,10 @@ fn known_tools() -> Vec<(&'static str, &'static str, Vec<String>)> {
     ]
 }
 
-pub fn detect_known_tools() -> Vec<ToolCandidate> {
+pub fn detect_known_tools() -> Vec<KnownTool> {
     known_tools()
         .into_iter()
-        .map(|(name, command, args)| ToolCandidate {
+        .map(|(name, command, args)| KnownTool {
             name: name.to_string(),
             command: command.to_string(),
             args,
@@ -52,7 +52,10 @@ pub fn detect_known_tools() -> Vec<ToolCandidate> {
 /// exists in config, show an interactive picker (first-run experience).
 ///
 /// `tool_name` is the first positional arg (if any), `extra_args` are the rest.
-pub fn resolve_tool(tool_name: Option<&str>, extra_args: &[String]) -> anyhow::Result<ToolCommand> {
+pub fn resolve_tool(
+    tool_name: Option<&str>,
+    extra_args: &[String],
+) -> anyhow::Result<ResolvedTool> {
     let tools = detect_known_tools();
 
     let chosen = match tool_name {
@@ -71,7 +74,7 @@ pub fn resolve_tool(tool_name: Option<&str>, extra_args: &[String]) -> anyhow::R
 
     let mut args = chosen.args;
     args.extend(extra_args.iter().cloned());
-    Ok(ToolCommand {
+    Ok(ResolvedTool {
         name: chosen.name,
         command: chosen.command,
         supports_structured: chosen.supports_structured,
@@ -80,7 +83,7 @@ pub fn resolve_tool(tool_name: Option<&str>, extra_args: &[String]) -> anyhow::R
 }
 
 /// Resolve a tool by name against known tools, or treat as a raw command.
-fn resolve_by_name(name: &str, tools: &[ToolCandidate]) -> anyhow::Result<ToolCommand> {
+fn resolve_by_name(name: &str, tools: &[KnownTool]) -> anyhow::Result<ResolvedTool> {
     if let Some(candidate) = tools.iter().find(|c| c.name == name) {
         if !candidate.available {
             return Err(anyhow::anyhow!(
@@ -88,7 +91,7 @@ fn resolve_by_name(name: &str, tools: &[ToolCandidate]) -> anyhow::Result<ToolCo
                 candidate.name
             ));
         }
-        Ok(ToolCommand {
+        Ok(ResolvedTool {
             name: candidate.name.clone(),
             command: candidate.command.clone(),
             args: candidate.args.clone(),
@@ -105,7 +108,7 @@ fn resolve_by_name(name: &str, tools: &[ToolCandidate]) -> anyhow::Result<ToolCo
             return Err(anyhow::anyhow!("'{}' is not found on PATH", cmd));
         }
 
-        Ok(ToolCommand {
+        Ok(ResolvedTool {
             name: cmd.to_string(),
             command: cmd.to_string(),
             args: cmd_args.iter().map(|s| s.to_string()).collect(),
@@ -116,7 +119,7 @@ fn resolve_by_name(name: &str, tools: &[ToolCandidate]) -> anyhow::Result<ToolCo
 
 /// Interactive first-run tool picker using a TUI. Shows available tools with
 /// arrow-key navigation, saves the selection to config as the default.
-fn pick_and_save_default(tools: &[ToolCandidate]) -> anyhow::Result<ToolCommand> {
+fn pick_and_save_default(tools: &[KnownTool]) -> anyhow::Result<ResolvedTool> {
     use crossterm::{
         cursor,
         event::{self, Event, KeyCode},
@@ -125,8 +128,8 @@ fn pick_and_save_default(tools: &[ToolCandidate]) -> anyhow::Result<ToolCommand>
         terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
     };
 
-    let available: Vec<&ToolCandidate> = tools.iter().filter(|t| t.available).collect();
-    let unavailable: Vec<&ToolCandidate> = tools.iter().filter(|t| !t.available).collect();
+    let available: Vec<&KnownTool> = tools.iter().filter(|t| t.available).collect();
+    let unavailable: Vec<&KnownTool> = tools.iter().filter(|t| !t.available).collect();
 
     if available.is_empty() {
         eprintln!("No supported AI tools found on PATH.\n");
@@ -143,7 +146,7 @@ fn pick_and_save_default(tools: &[ToolCandidate]) -> anyhow::Result<ToolCommand>
         let tool = available[0];
         println!("  Using {} (only available tool).", tool.name);
         save_default(&tool.name)?;
-        return Ok(ToolCommand {
+        return Ok(ResolvedTool {
             name: tool.name.clone(),
             command: tool.command.clone(),
             args: tool.args.clone(),
@@ -254,7 +257,7 @@ fn pick_and_save_default(tools: &[ToolCandidate]) -> anyhow::Result<ToolCommand>
     println!("  Saved {} as your default tool.\n", tool.name);
     save_default(&tool.name)?;
 
-    Ok(ToolCommand {
+    Ok(ResolvedTool {
         name: tool.name.clone(),
         command: tool.command.clone(),
         args: tool.args.clone(),
@@ -330,7 +333,7 @@ mod tests {
 
     #[test]
     fn resolve_by_name_known_unavailable() {
-        let tools = vec![ToolCandidate {
+        let tools = vec![KnownTool {
             name: "claude".to_string(),
             command: "claude".to_string(),
             args: vec![],
@@ -342,7 +345,7 @@ mod tests {
 
     #[test]
     fn resolve_by_name_known_available() {
-        let tools = vec![ToolCandidate {
+        let tools = vec![KnownTool {
             name: "claude".to_string(),
             command: "claude".to_string(),
             args: vec![],

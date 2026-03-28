@@ -1,11 +1,14 @@
 use std::{
     io::{Read, Write},
+    // std::sync::mpsc (not tokio::sync::mpsc) because the PTY reader and writer
+    // threads are blocking OS threads, not async tasks. Using the std channel
+    // avoids requiring a tokio runtime handle in the blocking thread.
     sync::mpsc,
     thread,
 };
 
 use anyhow::Context;
-use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use tokio::sync::{mpsc as tokio_mpsc, oneshot};
 use tracing::{debug, warn};
 
