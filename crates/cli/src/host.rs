@@ -167,7 +167,7 @@ async fn run_single_host_session(params: HostSessionParams) -> anyhow::Result<()
         rows,
         cols,
         store,
-        use_api_mode: _,
+        use_api_mode,
     } = params;
 
     let session_id = new_session_id();
@@ -239,7 +239,7 @@ async fn run_single_host_session(params: HostSessionParams) -> anyhow::Result<()
     let mut stream_ended_rx: Option<tokio::sync::oneshot::Receiver<()>> = None;
     let mut pre_tui_logs: Vec<(LogLevel, String)> = Vec::new();
 
-    if params.use_api_mode {
+    if use_api_mode {
         // Start OpenCode server and pick session BEFORE the TUI takes over the
         // terminal. The interactive session picker needs a clean terminal.
         eprintln!("  Starting OpenCode server...");
@@ -306,7 +306,7 @@ async fn run_single_host_session(params: HostSessionParams) -> anyhow::Result<()
     }
     tui_handle.draw(&tui_state)?;
 
-    if !params.use_api_mode {
+    if !use_api_mode {
         // ── PTY mode: spawn process + optional JSONL watcher ──
         let (p, streams) = PtySession::spawn(&command, &args, rows, cols)?;
         output_rx = Some(streams.output_rx);
