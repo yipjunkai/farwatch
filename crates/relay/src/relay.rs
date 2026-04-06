@@ -61,6 +61,8 @@ pub enum SessionError {
     PeerOffline,
     /// Bounded channel full, peer is slow to consume.
     ChannelFull,
+    /// Route payload exceeds size limit.
+    PayloadTooLarge,
 }
 
 impl std::fmt::Display for SessionError {
@@ -102,6 +104,7 @@ impl std::fmt::Display for SessionError {
             }
             Self::PeerOffline => write!(f, "peer is offline"),
             Self::ChannelFull => write!(f, "failed forwarding payload to peer"),
+            Self::PayloadTooLarge => write!(f, "payload exceeds maximum size"),
         }
     }
 }
@@ -535,6 +538,11 @@ impl RelayState {
     }
 
     fn route(&self, source_role: PeerRole, route: RelayRoute) -> Result<(), SessionError> {
+        const MAX_PAYLOAD_SIZE: usize = 262_144; // 256 KB
+        if route.payload.len() > MAX_PAYLOAD_SIZE {
+            return Err(SessionError::PayloadTooLarge);
+        }
+
         let mut session = self
             .sessions
             .get_mut(&route.session_id)
@@ -659,6 +667,9 @@ pub async fn ws_handler(
     Query(params): Query<WsQueryParams>,
     State(state): State<Arc<RelayState>>,
 ) -> impl IntoResponse {
+    // Limit WebSocket frame size to 1 MB (default is 64 MB).
+    let ws = ws.max_message_size(1_048_576);
+
     if !state.auth.is_enabled() {
         // Open relay mode — no auth required.
         return ws
@@ -707,8 +718,18 @@ async fn handle_socket(
 ) {
     let (mut sink, mut stream) = socket.split();
 
-    let Some(first_message) = stream.next().await else {
-        return;
+    let first_message = match tokio::time::timeout(
+        Duration::from_secs(10),
+        stream.next(),
+    )
+    .await
+    {
+        Ok(Some(msg)) => msg,
+        Ok(None) => return,
+        Err(_) => {
+            warn!(ip = %ip, "WebSocket timed out waiting for Register frame");
+            return;
+        }
     };
 
     let register_request = match first_message {
@@ -777,7 +798,16 @@ async fn handle_socket(
         }
     }
 
-    // Report session start to control API (fire-and-forget)
+    let (tx, mut rx) = mpsc::channel::<RelayMessage>(PEER_CHANNEL_CAPACITY);
+    let register_response = match state.register(&register_request, tx.clone(), ip) {
+        Ok(registered) => registered,
+        Err(err) => {
+            let _ = send_error(&mut sink, &err.to_string()).await;
+            return;
+        }
+    };
+
+    // Report session start to control API (fire-and-forget, after successful registration)
     if let Some(ref payload) = api_key_payload {
         let auth = Arc::clone(&state.auth);
         let session_id = register_request.session_id.clone();
@@ -788,20 +818,18 @@ async fn handle_socket(
         });
     }
 
-    let (tx, mut rx) = mpsc::channel::<RelayMessage>(PEER_CHANNEL_CAPACITY);
-    let register_response = match state.register(&register_request, tx.clone(), ip) {
-        Ok(registered) => registered,
-        Err(err) => {
-            let _ = send_error(&mut sink, &err.to_string()).await;
-            return;
-        }
-    };
-
-    // Track per-user session count (host role only, since hosts create sessions)
+    // Track per-user session count (host role only, new sessions only — not resumes)
     if register_request.role == PeerRole::Host
         && let Some(ref payload) = api_key_payload
     {
-        state.track_user(&payload.uid);
+        let already_tracked = state
+            .sessions
+            .get(&register_request.session_id)
+            .map(|s| s.host_user_id.is_some())
+            .unwrap_or(false);
+        if !already_tracked {
+            state.track_user(&payload.uid);
+        }
         // Store user_id on the session slot for cleanup
         if let Some(mut session) = state.sessions.get_mut(&register_request.session_id) {
             session.host_user_id = Some(payload.uid.clone());
