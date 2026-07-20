@@ -1,10 +1,20 @@
 # farwatch
 
-Access your AI coding assistants from any device. Secure, end-to-end encrypted terminal mirroring with structured agent events for Claude Code, Aider, GitHub Copilot, Gemini, and any terminal-based AI tool.
+[![Release](https://img.shields.io/github/v/release/yipjunkai/farwatch)](https://github.com/yipjunkai/farwatch/releases/latest)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/yipjunkai/farwatch/badge)](https://scorecard.dev/viewer/?uri=github.com/yipjunkai/farwatch)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#-license)
 
-## How it works
+**Access your AI coding assistant from any device.** End-to-end encrypted terminal mirroring with structured agent events — for Claude Code, Aider, Copilot, Gemini, and any terminal-based AI tool. Rust core. Zero-knowledge relay. Self-hostable.
 
-Run `farwatch start claude` on your dev machine. Claude Code launches in a PTY and you get a QR code. Scan it from your phone to get a live, encrypted session — both a terminal mirror and a structured view with native UI for tool calls, thinking indicators, and prompts.
+```bash
+farwatch start claude   # launches Claude Code in a PTY, prints a QR code
+```
+
+Scan the QR from your phone and you get a live, encrypted session — both a raw terminal mirror and a structured view with native UI for tool calls, thinking indicators, and prompts. The relay in the middle only ever sees ciphertext.
+
+> **ℹ️ Status** — This is a personal project, kept public because the crypto is meant to be auditable. It is not actively developed as a product, so issues and PRs may not get timely responses. **The hosted relay is currently offline** (it may return) — [self-host a relay](#-self-hosting) to run farwatch today; that path needs no account. Backstory: [Why farwatch exists](#-why-farwatch-exists).
+
+## 🧭 How it works
 
 ```
 Your Machine                         Cloud                          Your Phone
@@ -19,7 +29,7 @@ Your Machine                         Cloud                          Your Phone
 
 **Desktop** gets the real Claude Code TUI via takeover mode. **Phone** gets structured events (thinking, tool calls, text) as native UI cards, plus a terminal view toggle. Both can send input simultaneously. The relay is a dumb pipe — it forwards opaque encrypted bytes and never sees your data.
 
-## Install
+## 📦 Install
 
 ```bash
 # Homebrew (macOS / Linux)
@@ -35,7 +45,9 @@ cargo install --git https://github.com/yipjunkai/farwatch -p cli
 docker pull ghcr.io/yipjunkai/farwatch:latest
 ```
 
-## Quick start
+## 🚀 Quick start
+
+> The default `farwatch start` connects to the hosted relay, which is **currently offline**. [Self-host a relay](#-self-hosting) (no account needed) and point the CLI at it with `FARWATCH_URL`.
 
 ```bash
 # Start a session (auto-detects your AI tool)
@@ -58,9 +70,9 @@ Scan the QR code from your phone to connect. On the host:
 farwatch attach --pairing-uri "farwatch://pair?..."
 ```
 
-## What your phone sees
+## 📱 What your phone sees
 
-For tools that support structured output (currently Claude Code), the phone shows two views:
+For tools that support structured output (currently Claude Code), the phone shows two views.
 
 **Structured view** (default for Claude Code):
 
@@ -78,20 +90,9 @@ For tools that support structured output (currently Claude Code), the phone show
 
 Both views update in real-time as Claude Code works. The structured events come from tailing Claude Code's `.jsonl` session log (`~/.claude/projects/`), not from parsing terminal output.
 
-## Commands
+The mobile client lives in a separate repo: [**farwatch-mobile**](https://github.com/yipjunkai/farwatch-mobile) (Flutter, iOS + Android).
 
-```bash
-farwatch start                  # Auto-detect and start AI tool
-farwatch start claude           # Start Claude Code
-farwatch start aider --model x  # Start with extra args
-farwatch attach --pairing-uri   # Attach from another terminal
-farwatch doctor                 # Diagnose environment
-farwatch auth                   # Authenticate (hosted relay)
-farwatch completions zsh        # Generate shell completions
-farwatch --version              # Show version
-```
-
-## Supported AI tools
+## 🤖 Supported AI tools
 
 Auto-detected in order of priority:
 
@@ -102,11 +103,11 @@ Auto-detected in order of priority:
 | **GitHub Copilot CLI** (Microsoft) |     PTY only      |                                                |
 | **Gemini CLI** (Google)            |     PTY only      |                                                |
 | **Aider** (open source)            |     PTY only      |                                                |
-| Any command on PATH                |     PTY only      | `farwatch start my-tool`                 |
+| Any command on PATH                |     PTY only      | `farwatch start my-tool`                       |
 
 Tools without structured support work via PTY mirroring — the phone shows a terminal emulator.
 
-## Architecture
+## 🏗️ Architecture
 
 ### Dual-channel design
 
@@ -152,17 +153,28 @@ All WebSocket messages are MessagePack-encoded across three layers:
 - Session: `Heartbeat`, `VersionNotice`, `Notification`, `SessionEnded`, `ReadOnly`
 - Voice: `VoiceCommand`
 
-### Crates
+## 📁 Project structure
 
-| Crate      | Description                                                                              |
-| ---------- | ---------------------------------------------------------------------------------------- |
+```text
+farwatch/
+├── crates/
+│   ├── cli/         # User-facing binary (farwatch): PTY, JSONL watcher, TUI, takeover
+│   ├── relay/       # Zero-knowledge relay server
+│   └── protocol/    # Shared types, crypto (X25519 + AES-256-GCM), pairing primitives
+├── Dockerfile       # Relay image for self-hosters
+├── install.sh       # Shell installer (downloads a release binary)
+└── .github/         # Release + relay-image publish workflows
+```
+
+| Crate      | Description                                                                        |
+| ---------- | --------------------------------------------------------------------------------- |
 | `cli`      | User-facing binary (`farwatch`), PTY management, JSONL watcher, TUI, takeover mode |
-| `relay`    | Zero-knowledge relay server                                                              |
-| `protocol` | Shared protocol types, crypto (X25519 + AES-256-GCM), pairing primitives                 |
+| `relay`    | Zero-knowledge relay server                                                       |
+| `protocol` | Shared protocol types, crypto (X25519 + AES-256-GCM), pairing primitives          |
 
-A Flutter mobile app (iOS + Android) is available separately as the primary mobile client.
+The Flutter mobile app (iOS + Android) is the primary mobile client — see [farwatch-mobile](https://github.com/yipjunkai/farwatch-mobile).
 
-## Security
+## 🔒 Security
 
 Farwatch is designed so that **no one except you and your connected device can read your terminal data** — not us, not the relay operator, not anyone on the network.
 
@@ -191,10 +203,6 @@ The pairing URI (displayed as a QR code) includes a SHA-256 fingerprint of the h
 
 The relay server sees only session ID, peer role, message size, and timing. It **never** sees plaintext terminal content, keystrokes, agent events, public keys, or encryption keys. The relay cannot decrypt, modify, or forge messages — any tampering is detected by AES-GCM authentication.
 
-### Structured events and security
-
-The new `AgentEvent` and `AgentCommand` message types go through the same `SecureChannel::seal()`/`open()` pipeline as all other messages. The JSONL watcher reads files from `~/.claude/projects/` — a trusted local directory written by Claude Code. Tool results are truncated to 32KB before transmission to prevent large payloads. No new attack surface is introduced.
-
 ### Cryptographic primitives
 
 | Purpose              | Algorithm                        | Notes                                            |
@@ -207,13 +215,13 @@ The new `AgentEvent` and `AgentCommand` message types go through the same `Secur
 | At-rest encryption   | AES-256-GCM                      | Random nonce per file, machine-local key         |
 | Nonce construction   | 4 zero bytes + 8-byte BE counter | 96-bit nonce from 64-bit counter                 |
 
-### What Farwatch does NOT protect against
+### What farwatch does NOT protect against
 
 - **Compromised endpoints**: If your machine or phone is compromised, the attacker has access to the decrypted session.
 - **Traffic analysis**: The relay can see message timing and sizes, revealing activity patterns.
 - **Denial of service**: A malicious relay can drop or delay messages (but cannot read or forge content).
 
-## Self-hosting
+## 🖥️ Self-hosting
 
 Run your own relay server — no account, API key, or control API needed:
 
@@ -233,7 +241,7 @@ FARWATCH_URL=ws://your-server:8080/ws farwatch start
 
 > **Note:** `farwatch auth` is for the hosted service only. Self-hosted relays run unauthenticated by default.
 
-## Development
+## 🛠️ Development
 
 ```bash
 # Run the relay server locally
@@ -249,20 +257,6 @@ FARWATCH_URL=ws://127.0.0.1:8080/ws cargo run -p cli --features hosted -- start
 cargo test
 ```
 
-### Running from another directory
-
-To use the development CLI from a different project directory:
-
-```bash
-# Run against hosted relay from any directory
-cargo run --manifest-path ~/path/to/farwatch/Cargo.toml -p cli --features hosted -- start claude
-
-# Run against local relay from any directory
-FARWATCH_URL=ws://127.0.0.1:8080/ws cargo run --manifest-path ~/path/to/farwatch/Cargo.toml -p cli -- start
-```
-
-The AI tool launches in your current working directory, not the relay repo directory.
-
 ### Feature flags
 
 | Build command                          | Includes auth? | Use case                   |
@@ -270,11 +264,20 @@ The AI tool launches in your current working directory, not the relay repo direc
 | `cargo build -p cli`                   | No             | Self-hosted / contributors |
 | `cargo build -p cli --features hosted` | Yes            | Hosted service users       |
 
-## License
+The AI tool launches in your current working directory, not the repo directory. To run the dev CLI from elsewhere, pass `--manifest-path /path/to/farwatch/Cargo.toml`.
 
-Farwatch is licensed under either of
+## 🤔 Why farwatch exists
 
-- [MIT License](LICENSE-MIT)
-- [Apache License 2.0](LICENSE-APACHE)
+I wanted to check on and steer Claude Code from my phone without handing my terminal, prompts, or code to a third-party server. So farwatch encrypts everything end-to-end and treats the relay as a dumb pipe that only sees ciphertext — the crypto is open (the `protocol` crate) specifically so that claim is auditable.
 
-at your option.
+Since it was built, first-party remote control shipped in Claude Code, Codex, and Copilot CLI, so farwatch is no longer the only way to do this. It stays useful where those don't reach: **any** terminal tool rather than a single vendor, fully self-hostable, and end-to-end encrypted with nothing stored on anyone's server. These days I maintain it as a personal tool rather than a product.
+
+## 🤝 Contributing
+
+This is a personal project without active maintenance commitments — issues and PRs are welcome but may not get a timely response. If you want to build on it, forking is encouraged (the license allows it).
+
+## 📄 License
+
+Dual-licensed under [MIT](LICENSE-MIT) or [Apache 2.0](LICENSE-APACHE), at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in **farwatch** by you, as defined in the Apache-2.0 license, shall be dually licensed as above, without any additional terms or conditions.
