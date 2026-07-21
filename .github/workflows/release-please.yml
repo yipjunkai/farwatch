@@ -1,0 +1,75 @@
+name: Release Please
+
+# Maintains a "Release X.Y.Z" PR with an auto-generated changelog from
+# conventional commits. Merging it bumps the workspace version in Cargo.toml,
+# updates CHANGELOG.md, tags vX.Y.Z, and creates the GitHub release. The tag
+# then fires release.yml (builds + attaches the CLI binaries and bumps the
+# Homebrew tap) and publish.yml (builds + pushes the relay image).
+#
+# release-please authenticates as a GitHub App (not the default GITHUB_TOKEN),
+# so the commits, PR, and tag it creates DO trigger downstream workflows —
+# without the App, the tag would be inert (GITHUB_TOKEN can't re-trigger CI).
+#
+# Requires two repo secrets:
+#   RELEASE_PLEASE_APP_ID   — the App's numeric id
+#   RELEASE_PLEASE_APP_KEY  — the App's downloaded .pem private key
+# The App needs Contents: read+write and Pull requests: read+write on this repo.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never cancel an in-flight release PR generation — two concurrent runs would
+# corrupt the manifest.
+concurrency:
+  group: release-please
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          app-id: ${{ secrets.RELEASE_PLEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_APP_KEY }}
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          token: ${{ steps.app-token.outputs.token }}
+
+      # release-please bumps the workspace version in Cargo.toml but not the
+      # crates' entries in Cargo.lock, so the first `cargo fetch --locked` after
+      # a release would dirty the tree and fail CI. Re-sync the lock and commit
+      # it onto the release PR so the merge commit and tag are self-consistent.
+      # Re-runs every invocation (release-please force-pushes its branch);
+      # idempotent.
+      - name: Check out the release PR branch
+        if: ${{ steps.release.outputs.pr }}
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 1
+      - name: Set up Rust
+        if: ${{ steps.release.outputs.pr }}
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - name: Sync and commit Cargo.lock
+        if: ${{ steps.release.outputs.pr }}
+        run: |
+          cargo update -p protocol -p relay -p cli
+          if git diff --quiet -- Cargo.lock; then
+            echo "Cargo.lock already in sync; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: sync Cargo.lock with release version" -- Cargo.lock
+          git push origin "HEAD:${{ fromJSON(steps.release.outputs.pr).headBranchName }}"
