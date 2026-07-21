@@ -57,7 +57,7 @@ jobs:
             os: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -90,7 +90,7 @@ jobs:
           echo "asset_path=dist/${name}.tar.gz" >> $GITHUB_OUTPUT
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: farwatch-${{ matrix.target }}
           path: ${{ steps.package.outputs.asset_path }}
@@ -101,10 +101,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -112,7 +112,7 @@ jobs:
       # the built tarballs to it. No generate_release_notes — release-please
       # owns the changelog and release body.
       - name: Upload binaries to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           files: artifacts/**/*.tar.gz
@@ -136,13 +136,13 @@ jobs:
           repositories: homebrew-farwatch
 
       - name: Checkout tap repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: yipjunkai/homebrew-farwatch
           token: ${{ steps.tap-token.outputs.token }}
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
