@@ -1,0 +1,80 @@
+name: security
+
+# PR-attributable security checks: dependency-review diffs the dependency
+# changes a PR itself introduces; CodeQL scans the code at this commit. Both are
+# deterministic for a given diff. The dependency-tree audit (cargo-audit) —
+# which goes red when a new upstream advisory is published, with no change to
+# this repo — lives in audit.yml on a daily schedule plus dependency-file paths.
+#
+# paths-ignore is safe here because branch protection requires only verify's
+# ci-passed: on a docs-only PR these checks simply don't report.
+
+on:
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "LICENSE*"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/PULL_REQUEST_TEMPLATE.md"
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE*"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/PULL_REQUEST_TEMPLATE.md"
+  schedule:
+    - cron: "0 6 * * 1" # weekly Monday — picks up new CodeQL query packs
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  # Cancel superseded runs on PRs, but never on main — same rationale as
+  # verify.yml: every main commit keeps its own verdict.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: dependency review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+
+  codeql:
+    name: codeql (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # One language's failure shouldn't hide another's findings.
+      fail-fast: false
+      matrix:
+        # rust = the workspace crates (protocol/relay/cli); actions = the
+        # workflows themselves (injection patterns). No JS/TS in this repo.
+        language: [rust, actions]
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          languages: ${{ matrix.language }}
+      - uses: github/codeql-action/analyze@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          category: ${{ matrix.language }}

@@ -4,6 +4,9 @@ members = [
     "crates/relay",
     "crates/cli",
 ]
+# fuzz/ is a standalone workspace (see fuzz/Cargo.toml) so its nightly +
+# libfuzzer-sys toolchain never infects normal `cargo check`/`test`/`build`.
+exclude = ["fuzz"]
 resolver = "2"
 
 [workspace.package]

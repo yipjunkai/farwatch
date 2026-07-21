@@ -1,0 +1,6 @@
+# Build output and run-time state. Seeds, the README, the manifests, and the
+# committed Cargo.lock are tracked; everything below is machine-generated.
+target/
+corpus/
+artifacts/
+coverage/

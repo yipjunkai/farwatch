@@ -1,0 +1,1 @@
+farwatch://pair?relay=wss%3A%2F%2Frelay.farwatch.dev%2Fws&session=550e8400-e29b-41d4-a716-446655440000&code=ABCDEF-GHIJKL-MNOPQR&fingerprint=aaa8fff703b50b22
