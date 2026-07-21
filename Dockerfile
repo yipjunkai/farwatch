@@ -1,5 +1,8 @@
 # Build stage
-FROM rust:1.92-slim-bookworm AS builder
+# Base images pinned by digest (tag kept in the comment for readability).
+# Dependabot's docker ecosystem bumps these; a digest is immutable, so the
+# build is reproducible and can't be swapped under a moved tag.
+FROM rust:1.92-slim-bookworm@sha256:f1f73538ebe623fd3673a35aff3df358ae1084c64c55646516e5b17b321b6c9b AS builder
 
 WORKDIR /app
 
@@ -28,7 +31,7 @@ COPY crates/ crates/
 RUN cargo build --release --package relay
 
 # Runtime stage
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818
 
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 

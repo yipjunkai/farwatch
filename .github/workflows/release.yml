@@ -12,8 +12,11 @@ on:
       - 'v*'
   workflow_dispatch:
 
+# Least privilege at the top: read for everything, and only the one job that
+# uploads release assets elevates to contents: write. update-formula pushes to
+# the tap with its own minted App token, not GITHUB_TOKEN, so it stays read.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release
@@ -57,10 +60,12 @@ jobs:
             os: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           targets: ${{ matrix.target }}
 
@@ -90,7 +95,7 @@ jobs:
           echo "asset_path=dist/${name}.tar.gz" >> $GITHUB_OUTPUT
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: farwatch-${{ matrix.target }}
           path: ${{ steps.package.outputs.asset_path }}
@@ -100,11 +105,16 @@ jobs:
     needs: [prepare, build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Only this job writes to the repo — it uploads tarballs onto the release.
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
 
@@ -112,7 +122,7 @@ jobs:
       # the built tarballs to it. No generate_release_notes — release-please
       # owns the changelog and release body.
       - name: Upload binaries to release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           files: artifacts/**/*.tar.gz
@@ -136,13 +146,15 @@ jobs:
           repositories: homebrew-farwatch
 
       - name: Checkout tap repo
-        uses: actions/checkout@v7
+        # Keeps default persist-credentials: the minted tap token is persisted
+        # so the `git push` below authenticates against homebrew-farwatch.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: yipjunkai/homebrew-farwatch
           token: ${{ steps.tap-token.outputs.token }}
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
 
