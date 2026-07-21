@@ -1,0 +1,49 @@
+# Standalone workspace — fuzz/ is intentionally excluded from the root
+# /Cargo.toml (which lists `exclude = ["fuzz"]`) so the nightly +
+# libfuzzer-sys deps never infect normal `cargo check` / `test` / `build`.
+[workspace]
+
+[package]
+name = "farwatch-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+# The protocol crate owns every byte-facing boundary an attacker can reach:
+# the relay/peer wire decoders and the pairing-URI parser.
+protocol = { path = "../crates/protocol" }
+
+# Each fuzz target is its own binary. Names + paths are explicit so cargo-fuzz
+# finds them without convention magic; test/doc/bench off (these aren't either).
+[[bin]]
+name = "decode_relay"
+path = "fuzz_targets/decode_relay.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_peer_frame"
+path = "fuzz_targets/decode_peer_frame.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_secure_message"
+path = "fuzz_targets/decode_secure_message.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_pairing_uri"
+path = "fuzz_targets/parse_pairing_uri.rs"
+test = false
+doc = false
+bench = false

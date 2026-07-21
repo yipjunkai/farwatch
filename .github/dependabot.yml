@@ -32,3 +32,31 @@ updates:
     commit-message:
       prefix: "chore"
       include: scope
+
+  # Fuzz workspace (standalone, excluded from the root workspace — the /
+  # cargo entry above does not see it, so it needs its own).
+  - package-ecosystem: cargo
+    directory: /fuzz
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      fuzz-minor:
+        update-types: [minor, patch]
+      fuzz-major:
+        update-types: [major]
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore"
+      include: scope
+
+  # Relay container base images (Dockerfile pins them by digest).
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore"
+      include: scope
