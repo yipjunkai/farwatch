@@ -337,7 +337,7 @@ pub fn pick_session(sessions: &[OpenCodeSession]) -> anyhow::Result<SessionChoic
 
     // Sort sessions by updated time (most recent first).
     let mut sorted: Vec<&OpenCodeSession> = sessions.iter().collect();
-    sorted.sort_by(|a, b| b.time.updated.cmp(&a.time.updated));
+    sorted.sort_by_key(|b| std::cmp::Reverse(b.time.updated));
 
     // Total entries: "New session" + existing sessions.
     let total = 1 + sorted.len();

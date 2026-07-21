@@ -102,13 +102,12 @@ pub async fn run_attach(args: AttachArgs) -> anyhow::Result<()> {
                             break;
                         }
                     }
-                    Ok(Event::Resize(cols, rows)) => {
+                    Ok(Event::Resize(cols, rows))
                         if input_tx
                             .blocking_send(InputEvent::Resize(cols, rows))
-                            .is_err()
-                        {
-                            break;
-                        }
+                            .is_err() =>
+                    {
+                        break;
                     }
                     _ => {}
                 }
