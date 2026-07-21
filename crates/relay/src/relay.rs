@@ -8,7 +8,7 @@ use axum::{
 };
 use dashmap::DashMap;
 use futures_util::{SinkExt, StreamExt};
-use rand::{Rng, distributions::Alphanumeric, thread_rng};
+use rand::{Rng, distr::Alphanumeric};
 use semver::Version;
 use tokio::{sync::mpsc, time::Instant};
 use tracing::{debug, info, warn};
@@ -980,7 +980,7 @@ async fn send_error(
 }
 
 fn generate_resume_token() -> String {
-    thread_rng()
+    rand::rng()
         .sample_iter(&Alphanumeric)
         .map(char::from)
         .take(RESUME_TOKEN_LENGTH)

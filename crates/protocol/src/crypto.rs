@@ -3,7 +3,7 @@ use aes_gcm::{
     aead::{Aead, KeyInit},
 };
 use hkdf::Hkdf;
-use rand::{RngCore, thread_rng};
+use rand::RngCore;
 use sha2::{Digest, Sha256};
 use x25519_dalek::{PublicKey, StaticSecret};
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -78,7 +78,7 @@ impl SecureChannel {
 
 pub fn generate_key_pair() -> KeyPair {
     let mut secret = [0_u8; 32];
-    thread_rng().fill_bytes(&mut secret);
+    rand::rng().fill_bytes(&mut secret);
     let secret_key = StaticSecret::from(secret);
     let public = PublicKey::from(&secret_key).to_bytes();
     KeyPair { secret, public }
@@ -140,7 +140,8 @@ pub fn compute_handshake_mac(
 ) -> [u8; 32] {
     use hmac::{Hmac, Mac};
 
-    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(tx_key).expect("HMAC accepts any key size");
+    let mut mac =
+        <Hmac<Sha256> as KeyInit>::new_from_slice(tx_key).expect("HMAC accepts any key size");
     mac.update(local_public);
     mac.update(remote_public);
     mac.update(session_id.as_bytes());
@@ -161,7 +162,8 @@ pub fn verify_handshake_mac(
 ) -> Result<()> {
     use hmac::{Hmac, Mac};
 
-    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(rx_key).expect("HMAC accepts any key size");
+    let mut mac =
+        <Hmac<Sha256> as KeyInit>::new_from_slice(rx_key).expect("HMAC accepts any key size");
     mac.update(remote_public);
     mac.update(local_public);
     mac.update(session_id.as_bytes());

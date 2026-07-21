@@ -1,4 +1,4 @@
-use rand::{Rng, distributions::Alphanumeric, thread_rng};
+use rand::{Rng, distr::Alphanumeric};
 use url::Url;
 use uuid::Uuid;
 
@@ -30,7 +30,7 @@ pub fn new_session_id() -> String {
 }
 
 pub fn new_pairing_code() -> String {
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let raw: String = (&mut rng)
         .sample_iter(Alphanumeric)
         .map(char::from)
