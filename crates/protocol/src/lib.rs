@@ -7,26 +7,26 @@ pub use error::{Error, Result};
 
 // Re-export all public wire types and functions at the crate root.
 pub use wire::{
+    // Secure message types
+    AgentCommand,
+    AgentEvent,
+    // Peer-to-peer frame types
+    Handshake,
+    HandshakeConfirm,
     // Constants
     PROTOCOL_VERSION,
     PROTOCOL_VERSION_MIN,
+    PeerFrame,
     // Relay types
     PeerRole,
     PeerStatus,
+    PushNotification,
     RegisterRequest,
     RegisterResponse,
     RelayError,
     RelayMessage,
     RelayRoute,
-    // Peer-to-peer frame types
-    Handshake,
-    HandshakeConfirm,
-    PeerFrame,
     SealedFrame,
-    // Secure message types
-    AgentCommand,
-    AgentEvent,
-    PushNotification,
     SecureMessage,
     TodoItem,
     VoiceAction,

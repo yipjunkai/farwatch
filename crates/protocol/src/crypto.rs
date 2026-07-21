@@ -324,14 +324,8 @@ mod tests {
         client.open(&frame2).unwrap();
 
         // frame0 and frame1 should be rejected (nonce <= last_seen)
-        assert!(matches!(
-            client.open(&frame0),
-            Err(Error::ReplayDetected)
-        ));
-        assert!(matches!(
-            client.open(&frame1),
-            Err(Error::ReplayDetected)
-        ));
+        assert!(matches!(client.open(&frame0), Err(Error::ReplayDetected)));
+        assert!(matches!(client.open(&frame1), Err(Error::ReplayDetected)));
     }
 
     #[test]

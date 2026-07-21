@@ -12,9 +12,8 @@ use tracing::{info, warn};
 use crate::tui::{self, LogLevel, PeerStatus, SessionInfo, Tui, TuiAction, TuiState};
 
 use protocol::{
-    AgentCommand, AgentEvent, PeerFrame, PeerRole, PushNotification, RegisterRequest,
-    RegisterResponse, RelayMessage, RelayRoute, SecureMessage, PROTOCOL_VERSION,
-    PROTOCOL_VERSION_MIN,
+    AgentCommand, AgentEvent, PROTOCOL_VERSION, PROTOCOL_VERSION_MIN, PeerFrame, PeerRole,
+    PushNotification, RegisterRequest, RegisterResponse, RelayMessage, RelayRoute, SecureMessage,
     crypto::{fingerprint, generate_key_pair},
     decode_peer_frame,
     pairing::{PairingUri, build_pairing_uri, new_pairing_code, new_session_id},
@@ -633,23 +632,19 @@ fn handle_route(
                 ctx.send_secure(&SecureMessage::PtyOutput(bytes))?;
             }
 
-            ctx.send_secure(&SecureMessage::Notification(
-                PushNotification {
-                    title: format!("Connected to {}", ctx.identity.tool_name),
-                    body: "Session encryption established".to_string(),
-                },
-            ))?;
+            ctx.send_secure(&SecureMessage::Notification(PushNotification {
+                title: format!("Connected to {}", ctx.identity.tool_name),
+                body: "Session encryption established".to_string(),
+            }))?;
 
             // In API mode, send a synthetic SessionInit so the mobile app
             // immediately switches to structured view (no PTY output to display).
             if ctx.api_info.is_some() {
-                ctx.send_secure(&SecureMessage::AgentEvent(
-                    AgentEvent::SessionInit {
-                        session_id: ctx.identity.session_id.clone(),
-                        model: "opencode".to_string(),
-                        tools: vec![],
-                    },
-                ))?;
+                ctx.send_secure(&SecureMessage::AgentEvent(AgentEvent::SessionInit {
+                    session_id: ctx.identity.session_id.clone(),
+                    model: "opencode".to_string(),
+                    tools: vec![],
+                }))?;
             }
         }
         PeerFrame::Secure(sealed) => {
@@ -816,7 +811,10 @@ impl TakeoverTerminal {
             }
         });
 
-        Ok(Self { input_rx, stdin_task })
+        Ok(Self {
+            input_rx,
+            stdin_task,
+        })
     }
 
     /// Exit takeover mode: abort the input reader and restore the terminal.

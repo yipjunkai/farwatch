@@ -718,12 +718,7 @@ async fn handle_socket(
 ) {
     let (mut sink, mut stream) = socket.split();
 
-    let first_message = match tokio::time::timeout(
-        Duration::from_secs(10),
-        stream.next(),
-    )
-    .await
-    {
+    let first_message = match tokio::time::timeout(Duration::from_secs(10), stream.next()).await {
         Ok(Some(msg)) => msg,
         Ok(None) => return,
         Err(_) => {

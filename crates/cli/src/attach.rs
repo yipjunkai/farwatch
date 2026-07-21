@@ -8,8 +8,8 @@ use tokio::sync::mpsc;
 use tracing::{info, warn};
 
 use protocol::{
-    PeerFrame, PeerRole, RegisterRequest, RegisterResponse, RelayMessage, RelayRoute,
-    SecureMessage, PROTOCOL_VERSION, PROTOCOL_VERSION_MIN,
+    PROTOCOL_VERSION, PROTOCOL_VERSION_MIN, PeerFrame, PeerRole, RegisterRequest, RegisterResponse,
+    RelayMessage, RelayRoute, SecureMessage,
     crypto::{fingerprint, generate_key_pair},
     decode_peer_frame,
     pairing::{PairingUri, parse_pairing_uri},

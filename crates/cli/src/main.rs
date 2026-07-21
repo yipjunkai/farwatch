@@ -2,9 +2,9 @@
 mod account;
 mod ai_tools;
 mod attach;
-mod handshake;
 mod config;
 mod constants;
+mod handshake;
 mod host;
 mod input;
 mod jsonl_watcher;
@@ -104,7 +104,8 @@ async fn main() -> anyhow::Result<()> {
             api_key,
             invite_code,
         } => {
-            account::authenticate(email.as_deref(), api_key.as_deref(), invite_code.as_deref()).await?;
+            account::authenticate(email.as_deref(), api_key.as_deref(), invite_code.as_deref())
+                .await?;
         }
         #[cfg(feature = "hosted")]
         Command::Logout => {
