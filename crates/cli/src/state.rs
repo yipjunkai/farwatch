@@ -215,7 +215,7 @@ impl Drop for SessionStore {
 fn seal_state(key: &[u8; 32], plaintext: &[u8]) -> StateResult<Vec<u8>> {
     let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| StateError::InvalidKey)?;
     let mut nonce = [0u8; 12];
-    rand::thread_rng().fill_bytes(&mut nonce);
+    rand::rng().fill_bytes(&mut nonce);
     let ciphertext = cipher
         .encrypt(&nonce.into(), plaintext)
         .map_err(|_| StateError::EncryptionFailed)?;
@@ -263,7 +263,7 @@ fn load_or_create_state_key(root: &Path) -> StateResult<[u8; 32]> {
         Ok(key)
     } else {
         let mut key = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut key);
+        rand::rng().fill_bytes(&mut key);
         fs::write(&key_path, key).map_err(|e| io_err("failed writing state key", e))?;
         set_file_permissions(&key_path)?;
         Ok(key)
