@@ -123,11 +123,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # Mint a token scoped to the tap repo from the same release App that
+      # drives release-please. Requires the App installed on homebrew-farwatch
+      # with Contents: read+write. Replaces the standalone HOMEBREW_TAP_TOKEN PAT.
+      - name: Mint tap-scoped token from the release App
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: tap-token
+        with:
+          app-id: ${{ secrets.RELEASE_PLEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: homebrew-farwatch
+
       - name: Checkout tap repo
         uses: actions/checkout@v4
         with:
           repository: yipjunkai/homebrew-farwatch
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          token: ${{ steps.tap-token.outputs.token }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
